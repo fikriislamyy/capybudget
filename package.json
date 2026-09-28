@@ -3,14 +3,19 @@
   "private": true,
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "bun --hot apps/api/src/index.ts",
+    "dev": "bun --hot apps/api/src/server.ts",
     "dev:web": "bun run --cwd apps/web dev",
-    "dev:api": "bun --hot apps/api/src/index.ts",
+    "dev:api": "bun --hot apps/api/src/server.ts",
+    "dev:worker": "bun --hot apps/api/src/email/worker.ts",
     "build": "bun run --cwd apps/web build",
     "check": "bun run --cwd apps/web check && bun run --cwd apps/api check",
     "db:generate": "bun run --cwd apps/api db:generate",
     "db:migrate": "bun run --cwd apps/api db:migrate",
-    "db:studio": "bun run --cwd apps/api db:studio"
+    "db:studio": "bun run --cwd apps/api db:studio",
+    "db:cleanup-auth": "bun run --cwd apps/api db:cleanup-auth",
+    "test:auth": "bun test apps/api/tests/auth",
+    "test:auth:integration": "bun run --cwd apps/api test:integration",
+    "test:auth:e2e": "bun run --cwd apps/web test:e2e"
   },
   "engines": { "bun": ">=1.2.0" }
 }

@@ -4,8 +4,17 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  server: { proxy: { '/api': { target: process.env.API_INTERNAL_URL ?? 'http://localhost:3000', changeOrigin: false } } },
+  preview: { proxy: { '/api': { target: process.env.API_INTERNAL_URL ?? 'http://localhost:3000', changeOrigin: false } } },
   plugins: [tailwindcss(), sveltekit(), VitePWA({
     registerType: 'autoUpdate',
+    workbox: {
+      navigateFallbackDenylist: [
+        /^\/api\//,
+        /^\/dashboard(?:\/|$)/,
+        /^\/(?:login|sign-up|verify-email|forgot-password|reset-password)(?:\/|$)/
+      ]
+    },
     manifest: {
       name: 'CapyBudget',
       short_name: 'CapyBudget',

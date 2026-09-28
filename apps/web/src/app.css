@@ -1,12 +1,13 @@
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn-svelte/tailwind.css";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/fredoka";
+@import "@fontsource-variable/nunito-sans";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Nunito Sans Variable', ui-sans-serif, system-ui, sans-serif;
   color: #14211b;
   background: #f5f7f4;
   font-synthesis: none;
@@ -83,7 +84,7 @@ body { margin: 0; min-width: 320px; }
 }
 
 @theme inline {
-  --font-sans: 'Inter Variable', sans-serif;
+  --font-sans: 'Nunito Sans Variable', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -134,4 +135,19 @@ body { margin: 0; min-width: 320px; }
 	html {
 		@apply font-sans;
   }
+}
+
+::view-transition-old(root) { animation: none; z-index: 0; }
+::view-transition-new(root) {
+  animation: diagonal-theme-reveal 720ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 1;
+}
+
+@keyframes diagonal-theme-reveal {
+  from { clip-path: circle(0 at 100% 0); }
+  to { clip-path: circle(150vmax at 100% 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(root) { animation-duration: 1ms; }
 }

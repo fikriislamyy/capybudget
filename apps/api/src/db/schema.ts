@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, numeric, index, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uuid, numeric, index, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // Better Auth's Drizzle adapter uses these four tables for sessions and identity.
 export const user = pgTable('user', {
@@ -20,7 +20,10 @@ export const session = pgTable('session', {
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' })
-}, (table) => [index('session_user_id_idx').on(table.userId)]);
+}, (table) => [
+  index('session_user_id_idx').on(table.userId),
+  index('session_expires_at_idx').on(table.expiresAt)
+]);
 
 export const authAccount = pgTable('account', {
   id: text('id').primaryKey(),
@@ -36,7 +39,10 @@ export const authAccount = pgTable('account', {
   password: text('password'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
-}, (table) => [index('account_user_id_idx').on(table.userId)]);
+}, (table) => [
+  index('account_user_id_idx').on(table.userId),
+  uniqueIndex('account_provider_account_unique_idx').on(table.providerId, table.accountId)
+]);
 
 export const verification = pgTable('verification', {
   id: text('id').primaryKey(),
@@ -45,7 +51,10 @@ export const verification = pgTable('verification', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
-}, (table) => [index('verification_identifier_idx').on(table.identifier)]);
+}, (table) => [
+  index('verification_identifier_idx').on(table.identifier),
+  index('verification_expires_at_idx').on(table.expiresAt)
+]);
 
 // Monetary values use PostgreSQL NUMERIC to avoid floating-point rounding.
 export const accounts = pgTable('accounts', {
