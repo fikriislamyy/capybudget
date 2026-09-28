@@ -4,13 +4,13 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "bun --hot apps/api/src/index.ts",
-    "dev:web": "bun --cwd apps/web run dev",
+    "dev:web": "bun run --cwd apps/web dev",
     "dev:api": "bun --hot apps/api/src/index.ts",
-    "build": "bun --cwd apps/web run build",
-    "check": "bun --cwd apps/web run check && bun --cwd apps/api run check",
-    "db:generate": "bun --cwd apps/api run db:generate",
-    "db:migrate": "bun --cwd apps/api run db:migrate",
-    "db:studio": "bun --cwd apps/api run db:studio"
+    "build": "bun run --cwd apps/web build",
+    "check": "bun run --cwd apps/web check && bun run --cwd apps/api check",
+    "db:generate": "bun run --cwd apps/api db:generate",
+    "db:migrate": "bun run --cwd apps/api db:migrate",
+    "db:studio": "bun run --cwd apps/api db:studio"
   },
   "engines": { "bun": ">=1.2.0" }
 }
