@@ -233,6 +233,7 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
      const [w]=await tx.unsafe("insert into workspaces(owner_user_id,name,kind,currency,timezone) values($1,$2,'business',$3,$4) returning id,name,kind,currency,timezone",[actor.id,b.name.trim(),currency,timezone]);
      await tx.unsafe("insert into workspace_memberships(workspace_id,user_id,role) values($1,$2,'owner')",[w.id,actor.id]);
      await tx.unsafe("select set_config('app.workspace_id',$1,true)",[String(w.id)]);
+     await tx.unsafe('insert into business_profiles(workspace_id,legal_name) values($1,$2) on conflict(workspace_id) do nothing',[w.id,b.name.trim()]);
      await seed(tx,String(w.id),currency);return Response.json({workspace:w},{status:201});
    });
  })

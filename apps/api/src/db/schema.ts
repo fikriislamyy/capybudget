@@ -275,6 +275,62 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => [uniqueIndex('push_subscriptions_endpoint_unique').on(table.workspaceId,table.userId,table.endpoint), index('push_subscriptions_user_idx').on(table.workspaceId,table.userId)]);
 
+export const businessProfiles = pgTable('business_profiles', {
+  workspaceId: uuid('workspace_id').primaryKey().references(() => workspaces.id, { onDelete: 'cascade' }),
+  legalName: text('legal_name').notNull(), tradingName: text('trading_name'), address: jsonb('address').notNull().default({}),
+  contactEmail: text('contact_email'), phone: text('phone'), taxId: text('tax_id'), logoDocumentId: uuid('logo_document_id'),
+  fiscalYearStartMonth: integer('fiscal_year_start_month').notNull().default(1), fiscalYearStartDay: integer('fiscal_year_start_day').notNull().default(1),
+  version: integer('version').notNull().default(1), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+export const invoiceNumberSequences = pgTable('invoice_number_sequences', {
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  series: text('series').notNull().default('INV'), nextValue: bigint('next_value', { mode: 'number' }).notNull().default(1)
+}, (table) => [primaryKey({ columns: [table.workspaceId, table.series] })]);
+
+export const invoices = pgTable('invoices', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  number: text('number'), state: text('state', { enum: ['draft', 'issued', 'void'] }).notNull().default('draft'),
+  issueDate: date('issue_date').notNull(), dueDate: date('due_date').notNull(), currency: varchar('currency', { length: 3 }).notNull(), currencyScale: integer('currency_scale').notNull().default(2),
+  sellerSnapshot: jsonb('seller_snapshot'), recipientSnapshot: jsonb('recipient_snapshot').notNull(), locale: text('locale').notNull().default('en'),
+  notes: text('notes'), paymentInstructions: text('payment_instructions'), subtotal: numeric('subtotal', { precision: 19, scale: 4 }).notNull().default('0'),
+  discountTotal: numeric('discount_total', { precision: 19, scale: 4 }).notNull().default('0'), taxTotal: numeric('tax_total', { precision: 19, scale: 4 }).notNull().default('0'),
+  total: numeric('total', { precision: 19, scale: 4 }).notNull().default('0'), issuedAt: timestamp('issued_at', { withTimezone: true }), firstSentAt: timestamp('first_sent_at', { withTimezone: true }),
+  voidedAt: timestamp('voided_at', { withTimezone: true }), voidEffectiveOn: date('void_effective_on'), voidReason: text('void_reason'),
+  version: integer('version').notNull().default(1), createdBy: text('created_by').references(() => user.id), updatedBy: text('updated_by').references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(), archivedAt: timestamp('archived_at', { withTimezone: true })
+}, (table) => [uniqueIndex('invoices_workspace_id_unique').on(table.workspaceId, table.id), uniqueIndex('invoices_number_unique').on(table.workspaceId, table.number), index('invoices_workspace_due_idx').on(table.workspaceId, table.state, table.dueDate)]);
+
+export const invoiceLines = pgTable('invoice_lines', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), invoiceId: uuid('invoice_id').notNull(), position: integer('position').notNull(),
+  description: text('description').notNull(), quantity: numeric('quantity', { precision: 19, scale: 4 }).notNull(), unitPrice: numeric('unit_price', { precision: 19, scale: 4 }).notNull(),
+  discountAmount: numeric('discount_amount', { precision: 19, scale: 4 }).notNull().default('0'), taxRate: numeric('tax_rate', { precision: 7, scale: 4 }).notNull().default('0'),
+  netAmount: numeric('net_amount', { precision: 19, scale: 4 }).notNull(), taxAmount: numeric('tax_amount', { precision: 19, scale: 4 }).notNull(), totalAmount: numeric('total_amount', { precision: 19, scale: 4 }).notNull()
+}, (table) => [uniqueIndex('invoice_lines_workspace_id_unique').on(table.workspaceId, table.id), uniqueIndex('invoice_lines_position_unique').on(table.workspaceId, table.invoiceId, table.position)]);
+
+export const businessDocuments = pgTable('business_documents', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id), invoiceId: uuid('invoice_id'),
+  kind: text('kind', { enum: ['logo', 'invoice_pdf'] }).notNull(), sourceVersion: integer('source_version'), templateVersion: integer('template_version').notNull().default(1),
+  objectKey: text('object_key').notNull().unique(), mimeType: text('mime_type').notNull(), byteSize: bigint('byte_size', { mode: 'number' }), checksum: text('checksum'),
+  state: text('state', { enum: ['pending', 'ready', 'failed'] }).notNull().default('pending'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [uniqueIndex('business_documents_workspace_id_unique').on(table.workspaceId, table.id), uniqueIndex('business_documents_pdf_version_unique').on(table.workspaceId, table.invoiceId, table.sourceVersion, table.templateVersion)]);
+
+export const invoicePayments = pgTable('invoice_payments', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), invoiceId: uuid('invoice_id').notNull(), transactionId: uuid('transaction_id').notNull(),
+  accountId: uuid('account_id').notNull(), categoryId: uuid('category_id').notNull(), amount: numeric('amount', { precision: 19, scale: 4 }).notNull(), currency: varchar('currency', { length: 3 }).notNull(),
+  paidOn: date('paid_on').notNull(), reference: text('reference'), createdBy: text('created_by').references(() => user.id), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  reversedAt: timestamp('reversed_at', { withTimezone: true }), reversedBy: text('reversed_by').references(() => user.id), reversalReason: text('reversal_reason'), reversalEffectiveOn: date('reversal_effective_on')
+}, (table) => [uniqueIndex('invoice_payments_transaction_unique').on(table.workspaceId, table.transactionId), index('invoice_payments_invoice_idx').on(table.workspaceId, table.invoiceId, table.paidOn)]);
+
+export const invoiceDeliveries = pgTable('invoice_deliveries', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), invoiceId: uuid('invoice_id').notNull(), documentId: uuid('document_id').notNull(),
+  requestedBy: text('requested_by').notNull().references(() => user.id), recipientSnapshot: text('recipient_snapshot').notNull(), locale: text('locale').notNull(),
+  state: text('state', { enum: ['pending', 'queued', 'sending', 'accepted', 'failed', 'cancelled', 'uncertain'] }).notNull().default('pending'), attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(), leaseUntil: timestamp('lease_until', { withTimezone: true }), acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  providerMessageId: text('provider_message_id'), errorCode: text('error_code'), idempotencyKey: text('idempotency_key').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [uniqueIndex('invoice_deliveries_idempotency_unique').on(table.workspaceId, table.idempotencyKey), index('invoice_deliveries_pending_idx').on(table.state, table.nextAttemptAt)]);
+
 export const attachments = pgTable('attachments', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
   transactionId: uuid('transaction_id').notNull(), objectKey: text('object_key').notNull().unique(), originalName: text('original_name').notNull(),

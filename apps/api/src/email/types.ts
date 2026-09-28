@@ -27,6 +27,16 @@ export type EmailMessage =
       occurrenceId: string;
       locale: EmailLocale;
       expiresAt: number;
+    }
+  | {
+      kind: 'invoice-delivery';
+      to: string;
+      invoiceNumber: string;
+      workspaceId: string;
+      deliveryId: string;
+      requestedBy: string;
+      locale: EmailLocale;
+      expiresAt: number;
     };
 
 export type EncryptedEmailJob = {

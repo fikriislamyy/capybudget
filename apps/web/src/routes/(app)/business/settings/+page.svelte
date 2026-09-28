@@ -1,0 +1,31 @@
+<script lang="ts">
+ import {getContext} from 'svelte';import {AUTH_UI_CONTEXT,type AuthUiState} from '$lib/i18n/auth';import {trackingText} from '$lib/i18n/tracking';import {businessText} from '$lib/i18n/business';import {Button} from '$lib/components/ui/button';import * as Card from '$lib/components/ui/card';import * as Field from '$lib/components/ui/field';import {Input} from '$lib/components/ui/input';
+ type Workspaces={selectedId:string;ready:boolean;items:{id:string;kind:string}[]};type Profile={legalName:string;tradingName:string;address:{street?:string;city?:string;region?:string;postalCode?:string;country?:string};contactEmail:string;phone:string;taxId:string;logoDocumentId:string|null;fiscalYearStartMonth:number;fiscalYearStartDay:number;version:number};
+ const workspace=getContext<Workspaces>('capybudget-workspaces'),ui=getContext<AuthUiState>(AUTH_UI_CONTEXT),t=(key:Parameters<typeof businessText>[1])=>businessText(ui.locale,key);
+ let profile:Profile=$state({legalName:'',tradingName:'',address:{},contactEmail:'',phone:'',taxId:'',logoDocumentId:null,fiscalYearStartMonth:1,fiscalYearStartDay:1,version:1}),loading=$state(true),saving=$state(false),error=$state(''),notice=$state('');
+ async function load(){if(!workspace.selectedId)return;loading=true;error='';try{const response=await fetch('/api/workspaces/'+workspace.selectedId+'/business-profile');const data=await response.json();if(!response.ok)throw new Error(data.message??t('error'));profile={...data,address:data.address??{}};}catch(e){error=e instanceof Error?e.message:t('error');}finally{loading=false;}}
+ $effect(()=>{if(workspace.ready&&workspace.selectedId)void load();});
+ async function save(event:SubmitEvent){event.preventDefault();saving=true;error='';notice='';try{const response=await fetch('/api/workspaces/'+workspace.selectedId+'/business-profile',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(profile)}),data=await response.json();if(!response.ok)throw new Error(data.message??t('error'));profile={...profile,...data};notice=t('saved');}catch(e){error=e instanceof Error?e.message:t('error');}finally{saving=false;}}
+ async function upload(event:Event){const input=event.currentTarget as HTMLInputElement,file=input.files?.[0];if(!file)return;error='';notice='';const form=new FormData();form.set('file',file);try{const response=await fetch('/api/workspaces/'+workspace.selectedId+'/business-profile/logo',{method:'POST',body:form}),data=await response.json();if(!response.ok)throw new Error(data.message??t('error'));profile.logoDocumentId=data.documentId;notice=t('saved');}catch(e){error=e instanceof Error?e.message:t('error');}finally{input.value='';}}
+</script>
+<svelte:head><title>CapyBudget · {t('businessSettings')}</title></svelte:head>
+<div class="head"><p>{t('businessProfile')}</p><h1>{t('businessSettings')}</h1></div>
+{#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p role="status">{notice}</p>{/if}
+{#if loading}<p>{t('loading')}</p>{:else}<Card.Root><Card.Header><Card.Title>{t('businessProfile')}</Card.Title><Card.Description>These details appear on invoices issued from this business.</Card.Description></Card.Header><Card.Content>
+<form onsubmit={save}><Field.FieldGroup class="fields">
+ <Field.Field><Field.FieldLabel for="legal">{t('legalName')}</Field.FieldLabel><Input id="legal" bind:value={profile.legalName} maxlength={200} required /></Field.Field>
+ <Field.Field><Field.FieldLabel for="trading">{t('tradingName')}</Field.FieldLabel><Input id="trading" bind:value={profile.tradingName} maxlength={200} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="email">{t('email')}</Field.FieldLabel><Input id="email" type="email" bind:value={profile.contactEmail} maxlength={320} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="phone">{t('phone')}</Field.FieldLabel><Input id="phone" bind:value={profile.phone} maxlength={80} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="tax">{t('taxId')}</Field.FieldLabel><Input id="tax" bind:value={profile.taxId} maxlength={100} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="street">{t('street')}</Field.FieldLabel><Input id="street" bind:value={profile.address.street} maxlength={200} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="city">{t('city')}</Field.FieldLabel><Input id="city" bind:value={profile.address.city} maxlength={200} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="region">{t('region')}</Field.FieldLabel><Input id="region" bind:value={profile.address.region} maxlength={200} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="postal">{t('postalCode')}</Field.FieldLabel><Input id="postal" bind:value={profile.address.postalCode} maxlength={200} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="country">{t('country')}</Field.FieldLabel><Input id="country" bind:value={profile.address.country} maxlength={200} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="fiscal-month">{t('fiscalMonth')}</Field.FieldLabel><Input id="fiscal-month" type="number" min="1" max="12" bind:value={profile.fiscalYearStartMonth} /></Field.Field>
+ <Field.Field><Field.FieldLabel for="fiscal-day">{t('fiscalDay')}</Field.FieldLabel><Input id="fiscal-day" type="number" min="1" max="28" bind:value={profile.fiscalYearStartDay} /></Field.Field>
+</Field.FieldGroup><Button type="submit" disabled={saving}>{saving?'…':t('saveProfile')}</Button></form>
+<div class="logo"><label for="business-logo">{t('logo')}</label>{#if profile.logoDocumentId}<img src={'/api/workspaces/'+workspace.selectedId+'/business-documents/'+profile.logoDocumentId+'/download'} alt="Business logo" />{/if}<input id="business-logo" type="file" accept="image/png,image/jpeg,image/webp" onchange={upload}/><small>PNG, JPEG, or WebP · up to 2 MiB</small></div>
+</Card.Content></Card.Root>{/if}
+<style>.head{margin-bottom:22px}.head p{color:var(--muted-foreground);margin:0}.head h1{font:500 clamp(28px,4vw,38px) 'Fredoka Variable',sans-serif;margin:4px 0}:global(.fields){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:20px}.logo{display:grid;gap:8px;margin-top:24px}.logo img{max-width:180px;max-height:100px;object-fit:contain}.logo small{color:var(--muted-foreground)}.error{color:var(--destructive)}@media(max-width:640px){:global(.fields){grid-template-columns:1fr}}</style>
