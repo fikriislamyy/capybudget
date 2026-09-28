@@ -6,7 +6,8 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.user = null;
   event.locals.sessionState = 'available';
   const path = event.url.pathname;
-  const isPrivate = path === '/dashboard' || path.startsWith('/dashboard/');
+  const privateRoots = ['/dashboard','/transactions','/accounts','/categories','/recurring'];
+  const isPrivate = privateRoots.some((root) => path === root || path.startsWith(root + '/'));
   const isEntry = path === '/login' || path === '/sign-up';
   const cookie = event.request.headers.get('cookie');
   if (cookie || isPrivate || isEntry) {
