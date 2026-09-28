@@ -23,7 +23,7 @@ function getQueue(): Queue<EncryptedEmailJob> {
   return queue;
 }
 
-export async function enqueueEmail(message: EmailMessage): Promise<void> {
+export async function enqueueEmail(message: EmailMessage, jobId?: string): Promise<void> {
   const encrypted = encryptEmailMessage(message);
-  await getQueue().add(message.kind, encrypted, { jobId: randomUUID() });
+  await getQueue().add(message.kind, encrypted, { jobId: jobId ?? randomUUID() });
 }

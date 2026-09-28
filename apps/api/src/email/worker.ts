@@ -4,6 +4,7 @@ import { decryptEmailMessage } from './crypto';
 import { sendEmail } from './mailer';
 import { EMAIL_QUEUE_NAME } from './queue';
 import type { EncryptedEmailJob } from './types';
+import { client } from '../db';
 
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const worker = new Worker<EncryptedEmailJob>(
@@ -15,6 +16,15 @@ const worker = new Worker<EncryptedEmailJob>(
       message = decryptEmailMessage(job.data);
     } catch {
       throw new UnrecoverableError('Email job expired or could not be decrypted');
+    }
+    if(message.kind==='bill-reminder'){
+      const canSend=await client.begin(async(tx)=>{
+        await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[message.userId,message.workspaceId]);
+        const [occurrence]=await tx.unsafe("select id from bill_occurrences where workspace_id=$1 and id=$2 and status='unpaid'",[message.workspaceId,message.occurrenceId]);
+        const [preference]=await tx.unsafe("select enabled from finance_notification_preferences where workspace_id=$1 and user_id=$2 and event_type='bill-reminder' and channel='email'",[message.workspaceId,message.userId]);
+        return Boolean(occurrence)&&preference?.enabled!==false;
+      });
+      if(!canSend)return;
     }
     await sendEmail(message);
   },

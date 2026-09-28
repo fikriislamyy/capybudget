@@ -11,6 +11,8 @@ const copy = {
     expires: 'This message expires in 10 minutes.',
     resetExpires: 'This link expires in 30 minutes.',
     ignore: "If you didn't request this, you can safely ignore this email."
+    ,billSubject: 'A bill is coming up · CapyBudget', billTitle: 'A bill is coming up', billText: 'is due on',
+    billIntro: 'A gentle reminder for your upcoming bill:',
   },
   id: {
     verificationSubject: 'Kode verifikasi CapyBudget',
@@ -21,7 +23,9 @@ const copy = {
     resetText: 'Gunakan tautan berikut untuk membuat kata sandi baru:',
     expires: 'Kode ini berlaku selama 10 menit.',
     resetExpires: 'Tautan ini berlaku selama 30 menit.',
-    ignore: 'Jika Anda tidak meminta ini, abaikan email ini.'
+    ignore: 'Jika Anda tidak meminta ini, abaikan email ini.',
+    billSubject: 'Tagihan akan jatuh tempo · CapyBudget', billTitle: 'Tagihan akan jatuh tempo', billText: 'jatuh tempo pada',
+    billIntro: 'Pengingat untuk tagihan Anda yang akan datang:'
   }
 } as const;
 
@@ -34,6 +38,12 @@ function escapeHtml(value: string): string {
 
 export function renderEmail(message: EmailMessage) {
   const words = copy[message.locale];
+
+  if (message.kind === 'bill-reminder') {
+    const name = escapeHtml(message.billName), amount = escapeHtml(`${message.currency} ${message.amount}`), due = escapeHtml(message.dueDate);
+    return { subject: words.billSubject, text: `${words.billTitle}\n\n${words.billIntro}\n${message.billName} · ${message.currency} ${message.amount} · ${words.billText} ${message.dueDate}.`,
+      html: `<main><h1>${words.billTitle}</h1><p>${words.billIntro}</p><p><strong>${name}</strong><br>${amount}<br>${words.billText} ${due}</p></main>` };
+  }
 
   if (message.kind === 'verification') {
     const otp = escapeHtml(message.otp);

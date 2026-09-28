@@ -9,6 +9,7 @@ export default defineConfig({
   plugins: [tailwindcss(), sveltekit(), VitePWA({
     registerType: 'autoUpdate',
     workbox: {
+      importScripts: ['/push-worker.js'],
       navigateFallbackDenylist: [
         /^\/api\//,
         /^\/dashboard(?:\/|$)/,
