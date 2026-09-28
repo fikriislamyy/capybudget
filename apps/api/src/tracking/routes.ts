@@ -125,6 +125,32 @@ async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, inp
     if(!tag) reject('A selected tag is unavailable.');
     await q(tx,'insert into transaction_tags(workspace_id,transaction_id,tag_id) values($1,$2,$3)',[ws,id,tagId]);
   }
+  if(input.type==='expense'&&input.categoryId){
+    const [workspace]=await q(tx,'select owner_user_id,timezone from workspaces where id=$1',[ws]);
+    const today=workspaceToday(workspace.timezone),todayDate=new Date(`${today}T00:00:00Z`);
+    const currentStart=new Date(todayDate);currentStart.setUTCDate(1);
+    const currentWeekStart=new Date(todayDate);currentWeekStart.setUTCDate(currentWeekStart.getUTCDate()-((currentWeekStart.getUTCDay()+6)%7));
+    const expenseDate=isoDate(input.date);
+    const budgets=await q(tx,`with recursive ancestors(id,parent_id) as (
+      select id,parent_id from categories where workspace_id=$1 and id=$2 union all
+      select c.id,c.parent_id from categories c join ancestors a on c.id=a.parent_id where c.workspace_id=$1
+    ) select b.id,b.category_id,b.name,b.amount::text,b.currency,b.cadence,b.alert_thresholds,c.name as category_name,
+      case when b.cadence='weekly' then $3::date else $4::date end as starts_on,
+      case when b.cadence='weekly' then ($3::date+7) else ($4::date+interval '1 month')::date end as ends_on
+      from budgets b join categories c on c.workspace_id=b.workspace_id and c.id=b.category_id
+      where b.workspace_id=$1 and b.archived_at is null and b.category_id in(select id from ancestors)`,[ws,input.categoryId,currentWeekStart.toISOString().slice(0,10),currentStart.toISOString().slice(0,10)]);
+    for(const budget of budgets){
+      if(expenseDate<budget.starts_on||expenseDate>=budget.ends_on)continue;
+      const [actual]=await q(tx,"with recursive descendants(id) as (select $2::uuid union all select c.id from categories c join descendants d on c.parent_id=d.id where c.workspace_id=$1) select coalesce(sum(amount),0)::numeric as spent from transactions where workspace_id=$1 and deleted_at is null and type='expense' and occurred_at >= $3 and occurred_at < $4 and category_id in(select id from descendants)",[ws,budget.category_id,budget.starts_on,budget.ends_on]);
+      for(const threshold of (budget.alert_thresholds as number[]).sort((a,b)=>b-a)){
+        const [crossing]=await q(tx,'select $1::numeric*100 >= $2::numeric*$3::numeric as crossed',[actual.spent,budget.amount,threshold]);
+        if(!crossing.crossed)continue;
+        const dedupe=`budget:${budget.id}:${budget.starts_on}:${threshold}`;
+        await q(tx,"insert into finance_notifications(workspace_id,user_id,kind,source_id,dedupe_key,title,message) values($1,$2,'budget-alert',$3,$4,$5,$6) on conflict(workspace_id,user_id,dedupe_key) do nothing",[ws,workspace.owner_user_id,budget.id,dedupe,`${budget.category_name} budget at ${threshold}%`,`${budget.currency} ${actual.spent} of ${budget.currency} ${budget.amount} spent in the current period.`]);
+        break;
+      }
+    }
+  }
   await audit(tx,ws,actor.id,'transaction',id,'create',null,row);
   return {...row,id,journalId};
 }

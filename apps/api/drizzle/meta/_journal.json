@@ -29,6 +29,20 @@
       "when": 1790587557424,
       "tag": "0003_recurring_schedule_index",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790587757424,
+      "tag": "0004_personal_finance",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790587957424,
+      "tag": "0005_web_push",
+      "breakpoints": true
     }
   ]
 }

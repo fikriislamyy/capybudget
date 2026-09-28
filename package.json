@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "bun --env-file=.env --hot apps/api/src/dev.ts",
     "dev:web": "bun run --cwd apps/web dev",
-    "dev:api": "bun --hot apps/api/src/server.ts",
+    "dev:api": "bun --env-file=.env --hot apps/api/src/server.ts",
     "dev:worker": "bun --hot apps/api/src/email/worker.ts",
     "dev:tracking-worker": "bun --hot apps/api/src/tracking/worker.ts",
     "build": "bun run --cwd apps/web build",
@@ -15,6 +15,7 @@
     "db:studio": "bun run --cwd apps/api db:studio",
     "db:cleanup-auth": "bun run --cwd apps/api db:cleanup-auth",
     "test:auth": "bun test apps/api/tests/auth",
+    "test:personal-finance": "bun test apps/api/tests/personal-finance apps/api/tests/tracking/recurrence.test.ts",
     "test:auth:integration": "bun run --cwd apps/api test:integration",
     "test:tracking": "bun run --cwd apps/api test:tracking",
     "test:tracking:integration": "bun run --cwd apps/api test:tracking:integration",

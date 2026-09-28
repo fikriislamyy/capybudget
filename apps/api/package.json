@@ -11,6 +11,7 @@
     "test:integration": "AUTH_INTEGRATION=1 bun --env-file=../../.env test tests/auth/local-flow.test.ts",
     "test:tracking": "bun test tests/tracking",
     "test:tracking:integration": "TRACKING_INTEGRATION=1 bun --env-file=../../.env test tests/tracking",
+    "test:personal-finance": "bun test tests/personal-finance ../api/tests/tracking/recurrence.test.ts",
     "check": "tsc --noEmit",
     "db:generate": "bun --env-file=../../.env run drizzle-kit generate",
     "db:migrate": "bun --env-file=../../.env run drizzle-kit migrate",
@@ -28,12 +29,14 @@
     "elysia": "latest",
     "ioredis": "latest",
     "nodemailer": "latest",
-    "postgres": "latest"
+    "postgres": "latest",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "drizzle-kit": "latest",
     "@types/nodemailer": "latest",
+    "@types/web-push": "^3.6.4",
+    "drizzle-kit": "latest",
     "typescript": "~6.0.0"
   }
 }

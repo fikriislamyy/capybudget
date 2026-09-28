@@ -214,6 +214,67 @@ export const recurringOccurrences = pgTable('recurring_occurrences', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => [uniqueIndex('recurring_occurrence_date_unique').on(table.workspaceId, table.ruleId, table.scheduledDate)]);
 
+export const budgets = pgTable('budgets', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  categoryId: uuid('category_id').notNull(), name: text('name').notNull(), cadence: text('cadence', { enum: ['weekly', 'monthly'] }).notNull(),
+  amount: numeric('amount', { precision: 19, scale: 4 }).notNull(), currency: varchar('currency', { length: 3 }).notNull(),
+  startsOn: date('starts_on').notNull(), alertThresholds: jsonb('alert_thresholds').notNull().default([80, 100]),
+  createdBy: text('created_by').references(() => user.id), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(), archivedAt: timestamp('archived_at', { withTimezone: true })
+}, (table) => [index('budgets_workspace_idx').on(table.workspaceId), uniqueIndex('budgets_workspace_id_unique').on(table.workspaceId, table.id)]);
+
+export const savingsGoals = pgTable('savings_goals', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  name: text('name').notNull(), targetAmount: numeric('target_amount', { precision: 19, scale: 4 }).notNull(), currency: varchar('currency', { length: 3 }).notNull(),
+  targetDate: date('target_date'), linkedAccountId: uuid('linked_account_id'), createdBy: text('created_by').references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  archivedAt: timestamp('archived_at', { withTimezone: true })
+}, (table) => [index('savings_goals_workspace_idx').on(table.workspaceId), uniqueIndex('savings_goals_workspace_id_unique').on(table.workspaceId, table.id)]);
+
+export const goalContributions = pgTable('goal_contributions', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  goalId: uuid('goal_id').notNull(), direction: text('direction', { enum: ['add', 'withdraw'] }).notNull(),
+  amount: numeric('amount', { precision: 19, scale: 4 }).notNull(), occurredOn: date('occurred_on').notNull(),
+  note: text('note'), createdBy: text('created_by').references(() => user.id), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [index('goal_contributions_goal_idx').on(table.workspaceId, table.goalId, table.occurredOn)]);
+
+export const bills = pgTable('bills', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  name: text('name').notNull(), amount: numeric('amount', { precision: 19, scale: 4 }).notNull(), currency: varchar('currency', { length: 3 }).notNull(),
+  categoryId: uuid('category_id'), frequency: text('frequency', { enum: ['once', 'week', 'month', 'year'] }).notNull(), interval: integer('interval').notNull().default(1),
+  anchorDate: date('anchor_date').notNull(), nextDueDate: date('next_due_date').notNull(), endDate: date('end_date'),
+  reminderDays: integer('reminder_days').array().notNull().default([3, 0]), enabled: boolean('enabled').notNull().default(true),
+  createdBy: text('created_by').references(() => user.id), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(), archivedAt: timestamp('archived_at', { withTimezone: true })
+}, (table) => [index('bills_due_idx').on(table.workspaceId, table.enabled, table.nextDueDate), uniqueIndex('bills_workspace_id_unique').on(table.workspaceId, table.id)]);
+
+export const billOccurrences = pgTable('bill_occurrences', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id), billId: uuid('bill_id').notNull(),
+  dueOn: date('due_on').notNull(), name: text('name').notNull(), amount: numeric('amount', { precision: 19, scale: 4 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull(), status: text('status', { enum: ['unpaid', 'paid', 'skipped'] }).notNull().default('unpaid'),
+  paidAt: timestamp('paid_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [uniqueIndex('bill_occurrence_due_unique').on(table.workspaceId, table.billId, table.dueOn), index('bill_occurrence_upcoming_idx').on(table.workspaceId, table.dueOn, table.status)]);
+
+export const financeNotifications = pgTable('finance_notifications', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  userId: text('user_id').notNull().references(() => user.id), kind: text('kind').notNull(), sourceId: uuid('source_id').notNull(),
+  dedupeKey: text('dedupe_key').notNull(), title: text('title').notNull(), message: text('message').notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }), emailSentAt: timestamp('email_sent_at', { withTimezone: true }), pushSentAt: timestamp('push_sent_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [uniqueIndex('finance_notifications_dedupe_unique').on(table.workspaceId, table.userId, table.dedupeKey), index('finance_notifications_user_idx').on(table.userId, table.readAt, table.createdAt)]);
+
+export const financeNotificationPreferences = pgTable('finance_notification_preferences', {
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id), userId: text('user_id').notNull().references(() => user.id),
+  eventType: text('event_type').notNull(), channel: text('channel', { enum: ['email','push'] }).notNull(), enabled: boolean('enabled').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [primaryKey({ columns: [table.workspaceId, table.userId, table.eventType, table.channel] })]);
+
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  userId: text('user_id').notNull().references(() => user.id), endpoint: text('endpoint').notNull(), p256dh: text('p256dh').notNull(), auth: text('auth').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [uniqueIndex('push_subscriptions_endpoint_unique').on(table.workspaceId,table.userId,table.endpoint), index('push_subscriptions_user_idx').on(table.workspaceId,table.userId)]);
+
 export const attachments = pgTable('attachments', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
   transactionId: uuid('transaction_id').notNull(), objectKey: text('object_key').notNull().unique(), originalName: text('original_name').notNull(),

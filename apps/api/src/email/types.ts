@@ -14,6 +14,19 @@ export type EmailMessage =
       url: string;
       locale: EmailLocale;
       expiresAt: number;
+    }
+  | {
+      kind: 'bill-reminder';
+      to: string;
+      billName: string;
+      amount: string;
+      currency: string;
+      dueDate: string;
+      workspaceId: string;
+      userId: string;
+      occurrenceId: string;
+      locale: EmailLocale;
+      expiresAt: number;
     };
 
 export type EncryptedEmailJob = {
