@@ -3,6 +3,7 @@ import { cors } from '@elysiajs/cors';
 import { openapi } from '@elysiajs/openapi';
 import { auth } from './auth';
 import { guardAuthRequest } from './auth/rate-limit';
+import { trackingRoutes } from './tracking/routes';
 
 const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
 const trustedProxyIps = new Set((process.env.TRUSTED_PROXY_IPS ?? '').split(',').map((ip) => ip.trim()).filter(Boolean));
@@ -22,6 +23,7 @@ export function clientIpForRequest(request: Request, socketIp: string | undefine
 export const app = new Elysia()
   .use(cors({ origin: webOrigin, credentials: true }))
   .use(openapi())
+  .use(trackingRoutes)
   .all('/api/auth/*', async ({ request, server }) => {
     const ip = clientIpForRequest(request, server?.requestIP(request)?.address);
     const limited = await guardAuthRequest(request, ip);

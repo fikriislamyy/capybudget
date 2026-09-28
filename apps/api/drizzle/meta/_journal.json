@@ -8,6 +8,27 @@
       "when": 1790582418733,
       "tag": "0000_slim_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790587157424,
+      "tag": "0001_core_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790587357424,
+      "tag": "0002_fix_tenant_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790587557424,
+      "tag": "0003_recurring_schedule_index",
+      "breakpoints": true
     }
   ]
 }
