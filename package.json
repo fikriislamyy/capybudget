@@ -1,0 +1,16 @@
+{
+  "name": "capybudget",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun --hot apps/api/src/index.ts",
+    "dev:web": "bun --cwd apps/web run dev",
+    "dev:api": "bun --hot apps/api/src/index.ts",
+    "build": "bun --cwd apps/web run build",
+    "check": "bun --cwd apps/web run check && bun --cwd apps/api run check",
+    "db:generate": "bun --cwd apps/api run db:generate",
+    "db:migrate": "bun --cwd apps/api run db:migrate",
+    "db:studio": "bun --cwd apps/api run db:studio"
+  },
+  "engines": { "bun": ">=1.2.0" }
+}

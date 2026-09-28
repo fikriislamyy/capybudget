@@ -1,0 +1,28 @@
+{
+  "name": "@capybudget/api",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "check": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "latest",
+    "@elysiajs/openapi": "latest",
+    "better-auth": "latest",
+    "bullmq": "latest",
+    "drizzle-orm": "latest",
+    "elysia": "latest",
+    "ioredis": "latest",
+    "postgres": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "drizzle-kit": "latest",
+    "typescript": "latest"
+  }
+}

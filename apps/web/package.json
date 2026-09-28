@@ -1,0 +1,31 @@
+{
+  "name": "@capybudget/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --host 0.0.0.0",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@capybudget/api": "workspace:*",
+    "@sveltejs/adapter-auto": "latest",
+    "@sveltejs/kit": "latest",
+    "@sveltejs/vite-plugin-svelte": "latest",
+    "@tailwindcss/vite": "latest",
+    "@tanstack/svelte-query": "latest",
+    "@elysiajs/eden": "latest",
+    "echarts": "latest",
+    "bits-ui": "latest",
+    "lucide-svelte": "latest",
+    "tailwindcss": "latest",
+    "vite": "latest",
+    "vite-plugin-pwa": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "svelte": "latest",
+    "svelte-check": "latest",
+    "typescript": "latest"
+  }
+}
