@@ -43,6 +43,13 @@
       "when": 1790587957424,
       "tag": "0005_web_push",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790588157424,
+      "tag": "0006_business_invoicing",
+      "breakpoints": true
     }
   ]
 }

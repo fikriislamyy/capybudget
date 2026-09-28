@@ -11,8 +11,9 @@ const copy = {
     expires: 'This message expires in 10 minutes.',
     resetExpires: 'This link expires in 30 minutes.',
     ignore: "If you didn't request this, you can safely ignore this email."
-    ,billSubject: 'A bill is coming up · CapyBudget', billTitle: 'A bill is coming up', billText: 'is due on',
+    ,invoiceSubject: 'Your invoice from CapyBudget', invoiceText: 'Please find your invoice attached.', billSubject: 'A bill is coming up · CapyBudget', billTitle: 'A bill is coming up', billText: 'is due on',
     billIntro: 'A gentle reminder for your upcoming bill:',
+    invoiceTextShort: 'Invoice',
   },
   id: {
     verificationSubject: 'Kode verifikasi CapyBudget',
@@ -25,6 +26,7 @@ const copy = {
     resetExpires: 'Tautan ini berlaku selama 30 menit.',
     ignore: 'Jika Anda tidak meminta ini, abaikan email ini.',
     billSubject: 'Tagihan akan jatuh tempo · CapyBudget', billTitle: 'Tagihan akan jatuh tempo', billText: 'jatuh tempo pada',
+    invoiceSubject: 'Faktur dari CapyBudget', invoiceText: 'Terlampir faktur Anda.', invoiceTextShort: 'Faktur',
     billIntro: 'Pengingat untuk tagihan Anda yang akan datang:'
   }
 } as const;
@@ -39,6 +41,11 @@ function escapeHtml(value: string): string {
 export function renderEmail(message: EmailMessage) {
   const words = copy[message.locale];
 
+  if (message.kind === 'invoice-delivery') {
+    const number=escapeHtml(message.invoiceNumber),title=escapeHtml(words.invoiceSubject),intro=escapeHtml(words.invoiceText);
+    return {subject:words.invoiceSubject+' · '+message.invoiceNumber,text:title+'\n\n'+intro+'\n'+words.invoiceTextShort+' '+message.invoiceNumber,
+      html:'<main><h1>'+title+'</h1><p>'+intro+'</p><p><strong>'+words.invoiceTextShort+' '+number+'</strong></p></main>'};
+  }
   if (message.kind === 'bill-reminder') {
     const name = escapeHtml(message.billName), amount = escapeHtml(`${message.currency} ${message.amount}`), due = escapeHtml(message.dueDate);
     return { subject: words.billSubject, text: `${words.billTitle}\n\n${words.billIntro}\n${message.billName} · ${message.currency} ${message.amount} · ${words.billText} ${message.dueDate}.`,

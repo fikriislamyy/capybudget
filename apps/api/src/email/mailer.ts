@@ -26,8 +26,8 @@ function getTransporter(): Transporter {
   return transporter;
 }
 
-export async function sendEmail(message: EmailMessage): Promise<void> {
+export async function sendEmail(message: EmailMessage, attachments?: { filename: string; content: Uint8Array; contentType: string }[]): Promise<void> {
   const from = process.env.EMAIL_FROM;
   if (!from) throw new Error('EMAIL_FROM is required');
-  await getTransporter().sendMail({ from, to: message.to, ...renderEmail(message) });
+  await getTransporter().sendMail({ from, to: message.to, ...renderEmail(message), ...(attachments?.length ? { attachments: attachments.map((a) => ({ ...a, content: Buffer.from(a.content) })) } : {}) });
 }

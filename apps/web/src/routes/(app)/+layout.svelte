@@ -18,6 +18,7 @@
   const t=(key:Parameters<typeof trackingText>[1])=>trackingText(authUi.locale,key);
   const finance=(key:Parameters<typeof financeText>[1])=>financeText(authUi.locale,key);
   let workspaceState:WorkspaceState=$state({items:[],selectedId:'',ready:false,error:''});
+  const activeWorkspace=$derived(workspaceState.items.find((item)=>item.id===workspaceState.selectedId));
   let showWorkspaceForm=$state(false),workspaceName=$state(''),workspaceCurrency=$state('IDR'),workspaceTimezone=$state('Asia/Jakarta'),creatingWorkspace=$state(false);
   setContext('capybudget-workspaces',workspaceState);
   let signingOut=$state(false);
@@ -62,7 +63,7 @@
 </script>
 
 <svelte:head><title>CapyBudget · {data.user.name}</title></svelte:head>
-<div class="app-shell">
+<div class="app-shell" data-mode={activeWorkspace?.kind}>
   <aside class="sidebar">
     <a class="brand" href="/dashboard"><span class="brand-mark">c</span><span>capy<span>budget</span></span></a>
     <Field.Field>
@@ -76,6 +77,7 @@
     {#if workspaceState.error}<p class="load-error" role="alert">{workspaceState.error}</p>{/if}
     <nav aria-label="Main navigation">
       <a href="/dashboard">{t('overview')}</a><a href="/transactions">{t('transactions')}</a><a href="/accounts">{t('accounts')}</a><a href="/categories">{t('categories')}</a><a href="/recurring">{t('recurring')}</a><a href="/budgets">{financeText(authUi.locale,'budgets')}</a><a href="/goals">{financeText(authUi.locale,'goals')}</a><a href="/bills">{financeText(authUi.locale,'bills')}</a>
+      {#if activeWorkspace?.kind==='business'}<a href="/invoices">Invoices</a><a href="/business/settings">Business profile</a>{/if}
     </nav>
     <div class="sidebar-bottom"><span class="profile-avatar">{data.user.name.slice(0,1).toUpperCase()}</span><span class="profile-name">{data.user.name}</span><Button variant="ghost" size="sm" onclick={signOut} disabled={signingOut}>{signingOut?'…':t('signOut')}</Button></div>
   </aside>

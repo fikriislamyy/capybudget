@@ -5,6 +5,7 @@ import { sendEmail } from './mailer';
 import { EMAIL_QUEUE_NAME } from './queue';
 import type { EncryptedEmailJob } from './types';
 import { client } from '../db';
+import { markInvoiceDeliveryFailed, sendInvoicePdf } from '../business/worker';
 
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const worker = new Worker<EncryptedEmailJob>(
@@ -25,6 +26,16 @@ const worker = new Worker<EncryptedEmailJob>(
         return Boolean(occurrence)&&preference?.enabled!==false;
       });
       if(!canSend)return;
+    }
+    if(message.kind==='invoice-delivery'){
+      try { await sendInvoicePdf(message); }
+      catch(error) {
+        const uncertain=Boolean((error as {code?:string}).code?.startsWith('ETIMEDOUT'));
+        if(uncertain){await markInvoiceDeliveryFailed(message,true);throw new UnrecoverableError('SMTP delivery outcome is uncertain');}
+        if(job.attemptsMade+1 >= (job.opts.attempts??5))await markInvoiceDeliveryFailed(message);
+        throw error;
+      }
+      return;
     }
     await sendEmail(message);
   },

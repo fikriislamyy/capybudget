@@ -18,6 +18,7 @@
         "elysia": "latest",
         "ioredis": "latest",
         "nodemailer": "latest",
+        "playwright": "1.63.0",
         "postgres": "latest",
         "web-push": "^3.6.7",
       },
