@@ -16,6 +16,7 @@ services:
   redis:
     image: redis:8-alpine
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     ports: ["6379:6379"]
     volumes: ["redis_data:/data"]
     healthcheck:
@@ -23,6 +24,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  mailpit:
+    image: ghcr.io/axllent/mailpit:v1.31.1
+    restart: unless-stopped
+    ports: ["1025:1025", "8025:8025"]
   object-storage:
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
