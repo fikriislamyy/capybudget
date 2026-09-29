@@ -2,8 +2,8 @@ export type InvoiceLineInput={description:string;quantity:string;unitPrice:strin
 export type CalculatedLine={description:string;quantity:string;unitPrice:string;discountAmount:string;taxRate:string;netAmount:string;taxAmount:string;totalAmount:string};
 function scaled(value:string,scale:number):bigint{
   if(typeof value!=='string'||!/^(?:0|[1-9]\d{0,14})(?:\.\d{1,4})?$/.test(value))throw new Error('Enter a non-negative decimal with at most four decimal places.');
-  const [whole,fraction='']=value.split('.');
-  if(fraction.length>scale)throw new Error('This currency supports at most '+scale+' decimal places.');
+  const [whole,rawFraction='']=value.split('.'),fraction=rawFraction.slice(0,scale),excess=rawFraction.slice(scale);
+  if(/[1-9]/.test(excess))throw new Error('This currency supports at most '+scale+' decimal places.');
   return BigInt(whole!)*10n**BigInt(scale)+BigInt((fraction+'0'.repeat(scale)).slice(0,scale)||'0');
 }
 function quantity(value:string):bigint{
@@ -15,10 +15,11 @@ function quantity(value:string):bigint{
 }
 function rounded(numerator:bigint,denominator:bigint):bigint{return (numerator*2n+denominator)/(denominator*2n);}
 function format(value:bigint,scale:number):string{
-  const base=10n**BigInt(scale),whole=value/base;
-  if(!scale)return whole.toString();
-  return whole.toString()+'.'+(value%base).toString().padStart(scale,'0');
+  const negative=value<0n,absolute=negative?-value:value,base=10n**BigInt(scale),whole=absolute/base;
+  if(!scale)return (negative?'-':'')+whole.toString();
+  return (negative?'-':'')+whole.toString()+'.'+(absolute%base).toString().padStart(scale,'0');
 }
+function signedScaled(value:string,scale:number){return value.startsWith('-')?-scaled(value.slice(1),scale):scaled(value,scale);}
 function mulToCurrency(qty:bigint,price:bigint,currencyScale:number):bigint{
   const denominator=10n**BigInt(4+currencyScale);
   return rounded(qty*price,denominator);
@@ -52,5 +53,5 @@ export function validPositiveAmount(value:unknown,scale:number):value is string{
   if(typeof value!=='string')return false;
   try{return scaled(value,scale)>0n;}catch{return false;}
 }
-export function addMoney(a:string,b:string,scale:number){return format(scaled(a,scale)+scaled(b,scale),scale);}
+export function addMoney(a:string,b:string,scale:number){return format(signedScaled(a,scale)+signedScaled(b,scale),scale);}
 export function compareMoney(a:string,b:string,scale:number){const aa=scaled(a,scale),bb=scaled(b,scale);return aa<bb?-1:aa>bb?1:0;}

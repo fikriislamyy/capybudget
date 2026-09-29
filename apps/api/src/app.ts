@@ -6,6 +6,7 @@ import { guardAuthRequest } from './auth/rate-limit';
 import { trackingRoutes } from './tracking/routes';
 import { personalFinanceRoutes } from './personal-finance/routes';
 import { businessRoutes } from './business/routes';
+import { assistantRoutes } from './assistant/routes';
 
 const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
 const trustedProxyIps = new Set((process.env.TRUSTED_PROXY_IPS ?? '').split(',').map((ip) => ip.trim()).filter(Boolean));
@@ -28,6 +29,7 @@ export const app = new Elysia()
   .use(trackingRoutes)
   .use(personalFinanceRoutes)
   .use(businessRoutes)
+  .use(assistantRoutes)
   .all('/api/auth/*', async ({ request, server }) => {
     const ip = clientIpForRequest(request, server?.requestIP(request)?.address);
     const limited = await guardAuthRequest(request, ip);

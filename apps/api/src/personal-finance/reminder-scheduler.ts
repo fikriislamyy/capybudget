@@ -6,7 +6,9 @@ import { decryptPushAuth } from './push-crypto';
 
 let running = false;
 
-export async function sweepBillReminders(now = new Date()): Promise<void> {
+type PushSender = (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }, payload: string) => Promise<unknown>;
+
+export async function sweepBillReminders(now = new Date(), pushSender?: PushSender): Promise<void> {
   if (running) return;
   running = true;
   try {
@@ -46,15 +48,17 @@ export async function sweepBillReminders(now = new Date()): Promise<void> {
           }
           const [pushPreference]=await tx.unsafe("select enabled from finance_notification_preferences where workspace_id=$1 and user_id=$2 and event_type='bill-reminder' and channel='push'",[workspace.id,workspace.owner_user_id]);
           const publicKey=process.env.VAPID_PUBLIC_KEY,privateKey=process.env.VAPID_PRIVATE_KEY,subject=process.env.VAPID_SUBJECT??'mailto:hello@capybudget.local';
-          if(pushPreference?.enabled===true&&publicKey&&privateKey){
-            webpush.setVapidDetails(subject,publicKey,privateKey);
+          if(pushPreference?.enabled===true&&(pushSender||publicKey&&privateKey)){
+            if(!pushSender)webpush.setVapidDetails(subject,publicKey!,privateKey!);
             const notifications=await tx.unsafe("select n.id from finance_notifications n join bill_occurrences o on o.workspace_id=n.workspace_id and o.id=n.source_id where n.workspace_id=$1 and n.user_id=$2 and n.kind='bill-reminder' and n.push_sent_at is null and n.created_at >= $3::date and o.status='unpaid'",[workspace.id,workspace.owner_user_id,today]);
             const subscriptions=await tx.unsafe('select id,endpoint,p256dh,auth from push_subscriptions where workspace_id=$1 and user_id=$2',[workspace.id,workspace.owner_user_id]);
             for(const notification of notifications){
               let delivered=false;
               for(const subscription of subscriptions){
                 try{
-                  await webpush.sendNotification({endpoint:subscription.endpoint,keys:{p256dh:subscription.p256dh,auth:decryptPushAuth(subscription.auth)}},JSON.stringify({title:'A bill is due',body:'Open CapyBudget to view your upcoming bill.',url:'/bills',tag:`bill-${notification.id}`}));
+                  const target={endpoint:subscription.endpoint,keys:{p256dh:subscription.p256dh,auth:decryptPushAuth(subscription.auth)}};
+                  const payload=JSON.stringify({title:'A bill is due',body:'Open CapyBudget to view your upcoming bill.',url:'/bills',tag:`bill-${notification.id}`});
+                  if(pushSender)await pushSender(target,payload);else await webpush.sendNotification(target,payload);
                   delivered=true;
                 }catch(error){
                   const status=(error as {statusCode?:number}).statusCode;
@@ -63,6 +67,41 @@ export async function sweepBillReminders(now = new Date()): Promise<void> {
                 }
               }
               if(delivered)await tx.unsafe('update finance_notifications set push_sent_at=now() where id=$1',[notification.id]);
+            }
+          }
+
+          const assistantAlerts=await tx.unsafe(`select n.id,n.title,n.message,n.user_id as "userId",u.email,a.locale,a.consent_version as "consentVersion",r.consent_version as "runConsentVersion",f.checked_at as "checkedAt",p.updated_at as "preferenceUpdatedAt"
+            from finance_notifications n
+            join assistant_suggestions s on s.workspace_id=n.workspace_id and s.user_id=n.user_id and s.id=n.assistant_suggestion_id
+            join forecast_runs r on r.workspace_id=s.workspace_id and r.id=s.run_id
+            join assistant_settings a on a.workspace_id=n.workspace_id and a.user_id=n.user_id
+            join assistant_refresh_state f on f.workspace_id=n.workspace_id and f.user_id=n.user_id
+            join finance_notification_preferences p on p.workspace_id=n.workspace_id and p.user_id=n.user_id and p.event_type='assistant-alert' and p.channel='email' and p.enabled=true
+            join "user" u on u.id=n.user_id
+            where n.workspace_id=$1 and n.kind in ('cashflow-shortfall','cashflow-low-balance','assistant-invoice-followup') and n.resolved_at is null and n.email_sent_at is null and s.state in ('active','reviewing') and s.expires_at>now()
+              and a.local_forecast_enabled and a.suggestions_enabled and a.consent_version=r.consent_version and f.checked_at>=n.created_at
+              and not (s.facts->>'scope'='account' and exists(select 1 from finance_notifications wn join assistant_suggestions ws on ws.workspace_id=wn.workspace_id and ws.user_id=wn.user_id and ws.id=wn.assistant_suggestion_id where wn.workspace_id=n.workspace_id and wn.user_id=n.user_id and wn.kind=n.kind and wn.resolved_at is null and ws.state in ('active','reviewing') and ws.facts->>'scope'='workspace' and ws.facts->>'date'=s.facts->>'date'))
+            order by n.created_at limit 50`,[workspace.id]);
+          for(const alert of assistantAlerts){
+            if(!alert.email||Number(alert.consentVersion)!==Number(alert.runConsentVersion))continue;
+            const freshnessVersion=new Date(alert.checkedAt).valueOf(),preferenceVersion=new Date(alert.preferenceUpdatedAt).valueOf();
+            await enqueueEmail({kind:'assistant-alert',to:alert.email,workspaceId:workspace.id,userId:alert.userId,notificationId:alert.id,title:alert.title,message:alert.message,locale:alert.locale==='id'?'id':'en',expiresAt:now.valueOf()+7*86400000},`assistant-${alert.id}-${freshnessVersion}-${preferenceVersion}`);
+          }
+          const pushAlerts=await tx.unsafe(`select n.id,n.user_id as "userId",a.locale
+            from finance_notifications n join assistant_suggestions s on s.workspace_id=n.workspace_id and s.user_id=n.user_id and s.id=n.assistant_suggestion_id
+            join forecast_runs r on r.workspace_id=s.workspace_id and r.id=s.run_id
+            join assistant_settings a on a.workspace_id=n.workspace_id and a.user_id=n.user_id
+            join assistant_refresh_state f on f.workspace_id=n.workspace_id and f.user_id=n.user_id
+            join finance_notification_preferences p on p.workspace_id=n.workspace_id and p.user_id=n.user_id and p.event_type='assistant-alert' and p.channel='push' and p.enabled=true
+            where n.workspace_id=$1 and n.kind in ('cashflow-shortfall','cashflow-low-balance','assistant-invoice-followup') and n.resolved_at is null and n.push_sent_at is null and s.state in ('active','reviewing') and s.expires_at>now()
+              and a.local_forecast_enabled and a.suggestions_enabled and a.consent_version=r.consent_version and f.checked_at>=n.created_at
+              and not (s.facts->>'scope'='account' and exists(select 1 from finance_notifications wn join assistant_suggestions ws on ws.workspace_id=wn.workspace_id and ws.user_id=wn.user_id and ws.id=wn.assistant_suggestion_id where wn.workspace_id=n.workspace_id and wn.user_id=n.user_id and wn.kind=n.kind and wn.resolved_at is null and ws.state in ('active','reviewing') and ws.facts->>'scope'='workspace' and ws.facts->>'date'=s.facts->>'date')) order by n.created_at limit 50`,[workspace.id]);
+          if(pushAlerts.length&&(pushSender||publicKey&&privateKey)){
+            if(!pushSender)webpush.setVapidDetails(subject,publicKey!,privateKey!);
+            for(const alert of pushAlerts){
+              const subscriptions=await tx.unsafe('select id,endpoint,p256dh,auth from push_subscriptions where workspace_id=$1 and user_id=$2',[workspace.id,alert.userId]);let delivered=false;
+              for(const subscription of subscriptions){try{const target={endpoint:subscription.endpoint,keys:{p256dh:subscription.p256dh,auth:decryptPushAuth(subscription.auth)}};const payload=JSON.stringify({title:alert.locale==='id'?'Pembaruan arus kas':'Cashflow update',body:alert.locale==='id'?'Buka CapyBudget untuk meninjau proyeksi Anda.':'Open CapyBudget to review your forecast.',url:'/assistant',tag:`assistant-${alert.id}`});if(pushSender)await pushSender(target,payload);else await webpush.sendNotification(target,payload);delivered=true;}catch(error){const status=(error as {statusCode?:number}).statusCode;if(status===404||status===410)await tx.unsafe('delete from push_subscriptions where id=$1',[subscription.id]);else console.error('Assistant alert delivery failed',{status:status??'unknown'});}}
+              if(delivered)await tx.unsafe('update finance_notifications set push_sent_at=coalesce(push_sent_at,now()) where workspace_id=$1 and user_id=$2 and id=$3 and resolved_at is null',[workspace.id,alert.userId,alert.id]);
             }
           }
         });

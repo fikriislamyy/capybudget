@@ -14,6 +14,8 @@ const copy = {
     ,invoiceSubject: 'Your invoice from CapyBudget', invoiceText: 'Please find your invoice attached.', billSubject: 'A bill is coming up · CapyBudget', billTitle: 'A bill is coming up', billText: 'is due on',
     billIntro: 'A gentle reminder for your upcoming bill:',
     invoiceTextShort: 'Invoice',
+    invoiceReminderSubject: 'A payment reminder for your invoice',
+    assistantAlertSubject: 'A cashflow update · CapyBudget', assistantAlertOpen: 'Open CapyBudget to review your cashflow update.',
   },
   id: {
     verificationSubject: 'Kode verifikasi CapyBudget',
@@ -28,6 +30,7 @@ const copy = {
     billSubject: 'Tagihan akan jatuh tempo · CapyBudget', billTitle: 'Tagihan akan jatuh tempo', billText: 'jatuh tempo pada',
     invoiceSubject: 'Faktur dari CapyBudget', invoiceText: 'Terlampir faktur Anda.', invoiceTextShort: 'Faktur',
     billIntro: 'Pengingat untuk tagihan Anda yang akan datang:'
+    ,invoiceReminderSubject: 'Pengingat pembayaran faktur Anda', assistantAlertSubject: 'Pembaruan arus kas · CapyBudget', assistantAlertOpen: 'Buka CapyBudget untuk meninjau pembaruan arus kas Anda.'
   }
 } as const;
 
@@ -41,10 +44,19 @@ function escapeHtml(value: string): string {
 export function renderEmail(message: EmailMessage) {
   const words = copy[message.locale];
 
+  if(message.kind==='assistant-alert'){
+    const title=escapeHtml(message.title),body=escapeHtml(message.message),open=escapeHtml(words.assistantAlertOpen);
+    return {subject:words.assistantAlertSubject,text:`${message.title}\n\n${message.message}\n\n${words.assistantAlertOpen}`,html:`<main><h1>${title}</h1><p>${body}</p><p>${open}</p></main>`};
+  }
+
   if (message.kind === 'invoice-delivery') {
     const number=escapeHtml(message.invoiceNumber),title=escapeHtml(words.invoiceSubject),intro=escapeHtml(words.invoiceText);
     return {subject:words.invoiceSubject+' · '+message.invoiceNumber,text:title+'\n\n'+intro+'\n'+words.invoiceTextShort+' '+message.invoiceNumber,
       html:'<main><h1>'+title+'</h1><p>'+intro+'</p><p><strong>'+words.invoiceTextShort+' '+number+'</strong></p></main>'};
+  }
+  if(message.kind==='invoice-reminder'){
+    const number=escapeHtml(message.invoiceNumber),body=escapeHtml(message.reminderMessage),title=escapeHtml(words.invoiceReminderSubject);
+    return {subject:`${words.invoiceReminderSubject} · ${message.invoiceNumber}`,text:`${title}\n\n${body}\n${words.invoiceTextShort} ${message.invoiceNumber}`,html:`<main><h1>${title}</h1><p>${body}</p><p><strong>${words.invoiceTextShort} ${number}</strong></p></main>`};
   }
   if (message.kind === 'bill-reminder') {
     const name = escapeHtml(message.billName), amount = escapeHtml(`${message.currency} ${message.amount}`), due = escapeHtml(message.dueDate);

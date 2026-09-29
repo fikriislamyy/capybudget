@@ -37,6 +37,28 @@ export type EmailMessage =
       requestedBy: string;
       locale: EmailLocale;
       expiresAt: number;
+    }
+  | {
+      kind: 'invoice-reminder';
+      to: string;
+      workspaceId: string;
+      deliveryId: string;
+      requestedBy: string;
+      invoiceNumber: string;
+      reminderMessage: string;
+      locale: EmailLocale;
+      expiresAt: number;
+    }
+  | {
+      kind: 'assistant-alert';
+      to: string;
+      workspaceId: string;
+      userId: string;
+      notificationId: string;
+      title: string;
+      message: string;
+      locale: EmailLocale;
+      expiresAt: number;
     };
 
 export type EncryptedEmailJob = {

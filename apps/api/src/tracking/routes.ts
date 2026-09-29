@@ -87,6 +87,40 @@ async function audit(tx: TransactionSql, ws: string, actor: string, type: string
   await q(tx,'insert into audit_logs(workspace_id,actor_user_id,entity_type,entity_id,action,before,after) values($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)',[ws,actor,type,id,action,before?JSON.stringify(before):null,after?JSON.stringify(after):null]);
 }
 
+async function learnCategory(tx:TransactionSql,ws:string,actor:Actor,transaction:any,previousCategoryId?:string|null){
+  if(!['income','expense'].includes(transaction.type)||!transaction.categoryId)return;
+  const merchant=String(transaction.merchant??'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('en-US').slice(0,200);if(!merchant)return;
+  await q(tx,'insert into assistant_settings(workspace_id,user_id) values($1,$2) on conflict do nothing',[ws,actor.id]);
+  const [prefs]=await q(tx,'select categorization_enabled,consent_version,source_permissions from assistant_settings where workspace_id=$1 and user_id=$2',[ws,actor.id]);if(!prefs?.categorization_enabled||!(prefs.source_permissions?.merchant??false))return;
+  const matches=await q(tx,'select id,category_id as "categoryId",origin,matcher_type as "matcherType" from category_rules where workspace_id=$1 and user_id=$2 and transaction_type=$3 and enabled and ((matcher_type=\'merchant_exact\' and normalized_match=$4) or (matcher_type=\'merchant_contains\' and strpos($4::text,normalized_match)>0)) order by case when origin=\'explicit\' then 0 else 1 end,matcher_type,support_count desc limit 1',[ws,actor.id,transaction.type,merchant]);
+  const matched=matches[0],source=matched?.origin==='explicit'?'explicit_rule':matched?.origin==='learned'?'learned_rule':'manual';
+  const decision=matched&&matched.categoryId===transaction.categoryId?'accepted':matched?'corrected':'accepted';
+  await q(tx,'insert into category_feedback(workspace_id,user_id,transaction_id,transaction_version,previous_category_id,chosen_category_id,normalized_merchant,prediction_source,rule_id,decision,consent_version) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict(workspace_id,user_id,transaction_id,transaction_version) do nothing',[ws,actor.id,transaction.id,transaction.version,previousCategoryId??null,transaction.categoryId,merchant,source,matched?.id??null,decision,prefs.consent_version]);
+  await refreshLearnedCategory(tx,ws,actor.id,transaction.type,merchant);
+}
+
+function normalizedCategoryMerchant(value: unknown) {
+  return String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US').slice(0, 200);
+}
+
+async function refreshLearnedCategory(tx:TransactionSql,ws:string,userId:string,type:string,merchant:string){
+  const groups=await q(tx,`select chosen_category_id as "categoryId",count(*)::int as count from (
+    select distinct on(f.transaction_id) f.transaction_id,f.chosen_category_id,f.transaction_version
+    from category_feedback f join transactions t on t.workspace_id=f.workspace_id and t.id=f.transaction_id
+    where f.workspace_id=$1 and f.user_id=$2 and f.normalized_merchant=$3 and t.type=$4 and t.deleted_at is null
+    order by f.transaction_id,f.transaction_version desc
+  ) current group by chosen_category_id order by count desc`,[ws,userId,merchant,type]);
+  const total=groups.reduce((sum:number,row:any)=>sum+Number(row.count),0),winner=groups[0];
+  const accepted=winner?Number(winner.count):0;
+  if(total>=3&&winner&&accepted/total>=0.9){
+    await q(tx,`insert into category_rules(workspace_id,user_id,transaction_type,matcher_type,normalized_match,category_id,origin,support_count,accepted_count,rejected_count,enabled)
+      values($1,$2,$3,'merchant_exact',$4,$5,'learned',$6,$7,$8,true)
+      on conflict(workspace_id,user_id,transaction_type,matcher_type,normalized_match) do update set category_id=excluded.category_id,origin='learned',support_count=excluded.support_count,accepted_count=excluded.accepted_count,rejected_count=excluded.rejected_count,enabled=true,version=category_rules.version+1,updated_at=now() where category_rules.origin='learned'`,[ws,userId,type,merchant,winner.categoryId,total,accepted,total-accepted]);
+  }else{
+    await q(tx,"update category_rules set enabled=false,support_count=$5,accepted_count=$6,rejected_count=$5::int-$6::int,version=version+1,updated_at=now() where workspace_id=$1 and user_id=$2 and transaction_type=$3 and matcher_type='merchant_exact' and normalized_match=$4 and origin='learned'",[ws,userId,type,merchant,total,accepted]);
+  }
+}
+
 async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, input: Input, existingId?: string) {
   if(!['income','expense','transfer'].includes(input.type)) reject('Choose a valid transaction type.');
   if(!uuidRe.test(input.accountId)) reject('Choose an account.');
@@ -456,6 +490,7 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
      return Response.json(old.response_body,{status:201});
    }
    const row:any=await makeTransaction(tx,params.workspaceId,actor,input);
+   await learnCategory(tx,params.workspaceId,actor,row);
    await q(tx,'update idempotency_keys set response_body=$1::jsonb,resource_id=$2 where id=$3',[JSON.stringify(row),row.id,reserved.id]);
    return Response.json(row,{status:201});
  }))
@@ -467,6 +502,9 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    if(before.version!==version)return fail(409,'STALE_TRANSACTION','This transaction changed. Refresh and try again.');
    await reverseTransaction(tx,params.workspaceId,actor,params.id,before.occurred_at);
    await q(tx,'update transactions set deleted_at=now(),deleted_by=$1,updated_by=$1,updated_at=now(),version=version+1 where id=$2',[actor.id,params.id]);
+   await q(tx,'delete from category_feedback where workspace_id=$1 and user_id=$2 and transaction_id=$3',[params.workspaceId,actor.id,params.id]);
+   const oldMerchant=normalizedCategoryMerchant(before.merchant);
+   if(oldMerchant)await refreshLearnedCategory(tx,params.workspaceId,actor.id,before.type,oldMerchant);
    await audit(tx,params.workspaceId,actor.id,'transaction',params.id,'delete',before,null);
    return new Response(null,{status:204});
  }))
@@ -478,7 +516,13 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    if(before.version!==version)return fail(409,'STALE_TRANSACTION','This transaction changed. Refresh and try again.');
    const input=body as Input;
    await reverseTransaction(tx,params.workspaceId,actor,params.id,before.occurred_at);
+   // An edited transaction is one current example. Remove the prior merchant/type
+   // evidence before recording its new version so it cannot train two rules.
+   await q(tx,'delete from category_feedback where workspace_id=$1 and user_id=$2 and transaction_id=$3',[params.workspaceId,actor.id,params.id]);
+   const oldMerchant=normalizedCategoryMerchant(before.merchant);
+   if(oldMerchant)await refreshLearnedCategory(tx,params.workspaceId,actor.id,before.type,oldMerchant);
    const updated=await makeTransaction(tx,params.workspaceId,actor,input,params.id);
+   await learnCategory(tx,params.workspaceId,actor,updated,before.category_id);
    await audit(tx,params.workspaceId,actor.id,'transaction',params.id,'edit',before,updated);
    return {transaction:updated};
  }))
@@ -493,7 +537,8 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
      await q(tx,'insert into journal_entries(id,workspace_id,transaction_id,effective_date,reason,reverses_entry_id,created_by) values($1,$2,$3,$4,\'restore\',$5,$6)',[restoreId,params.workspaceId,params.id,before.occurred_at,reversal.id,actor.id]);
      for(const line of lines)await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency) values($1,$2,$3,$4,$5,$6)',[params.workspaceId,restoreId,line.ledger_account_id,line.credit,line.debit,line.currency]);
    }
-   const [restored]=await q(tx,'update transactions set deleted_at=null,deleted_by=null,updated_by=$1,updated_at=now(),version=version+1 where workspace_id=$2 and id=$3 returning id,version',[actor.id,params.workspaceId,params.id]);
+   const [restored]=await q(tx,'update transactions set deleted_at=null,deleted_by=null,updated_by=$1,updated_at=now(),version=version+1 where workspace_id=$2 and id=$3 returning id,type,category_id as "categoryId",merchant,version',[actor.id,params.workspaceId,params.id]);
+   await learnCategory(tx,params.workspaceId,actor,restored,before.category_id);
    await audit(tx,params.workspaceId,actor.id,'transaction',params.id,'restore',before,restored);
    return {transaction:restored};
  }))

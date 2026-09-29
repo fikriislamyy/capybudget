@@ -14,6 +14,11 @@ const children = [
     cwd: import.meta.dir.replace(/\/src$/, ''),
     stdout: 'inherit',
     stderr: 'inherit'
+  }),
+  Bun.spawn([process.execPath, '--hot', 'src/assistant/worker.ts'], {
+    cwd: import.meta.dir.replace(/\/src$/, ''),
+    stdout: 'inherit',
+    stderr: 'inherit'
   })
 ];
 

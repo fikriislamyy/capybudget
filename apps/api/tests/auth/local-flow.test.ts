@@ -40,7 +40,7 @@ describe('local Better Auth and Mailpit flow', () => {
   test.skipIf(!enabled)('signup, OTP verification, login, password reset, and logout work end to end', async () => {
     try {
       const signup = await post('/sign-up/email', { name: 'Auth Test', email, password: oldPassword });
-      expect(signup.ok).toBe(true);
+      if (!signup.ok) throw new Error(`Signup failed (${signup.status}): ${await signup.text()}`);
 
       const verificationMail = await waitForMail('Your CapyBudget verification code');
       const otp = `${verificationMail.text}\n${verificationMail.html}`.match(/\b\d{6}\b/)?.[0];

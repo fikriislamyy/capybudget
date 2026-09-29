@@ -1,0 +1,93 @@
+import type { TransactionSql } from 'postgres';
+import { nextOccurrenceDate, workspaceToday } from '../tracking/recurrence';
+import { fromUnits, toUnits } from './money';
+import { historicalDailyAverages } from './history';
+import { hasUnresolvedSourceOverlap, projectCashflow, type ForecastEvent } from './forecast';
+
+const q=(tx:TransactionSql,statement:string,values:unknown[]=[])=>(tx.unsafe(statement,values as never[]));
+function asJson(value:any){return typeof value==='string'?JSON.parse(value):value;}
+function asAmount(value:unknown){return typeof value==='string'?value:'0.0000';}
+function dateMinus(date:string,days:number){const value=new Date(date+'T00:00:00Z');value.setUTCDate(value.getUTCDate()-days);return value.toISOString().slice(0,10);}
+function reject(status:number,code:string,message:string):never{throw Object.assign(new Error(message),{status,code});}
+
+export async function buildForecastSources(tx:TransactionSql,workspaceId:string,userId:string,workspace:any,prefs:any,horizon:number,selectedAccount:string|null){
+ const today=workspaceToday(workspace.timezone),through=new Date(today+'T00:00:00Z');through.setUTCDate(through.getUTCDate()+horizon);const end=through.toISOString().slice(0,10),lookback=dateMinus(today,90),flags:string[]=[];
+ const allowed=asJson(prefs.source_permissions)??{};
+ if(!allowed.history)flags.push('history_source_excluded');if(!allowed.recurring)flags.push('recurring_source_excluded');if(!allowed.bills)flags.push('bills_source_excluded');if(workspace.kind==='business'&&!allowed.invoices)flags.push('invoices_source_excluded');
+ const accountRows=await q(tx,`select a.id,a.name,a.kind,a.currency,a.opening_date as "openingDate",
+ coalesce(sum(jl.debit-jl.credit) filter(where je.effective_date<=$2::date),0)::text as balance,
+ coalesce(s.protected_amount,0)::text as "protectedAmount",coalesce(s.low_balance_threshold,0)::text as "lowBalanceThreshold"
+ from accounts a left join journal_lines jl on jl.workspace_id=a.workspace_id and jl.ledger_account_id=a.ledger_account_id
+ left join journal_entries je on je.workspace_id=jl.workspace_id and je.id=jl.entry_id
+ left join assistant_account_settings s on s.workspace_id=a.workspace_id and s.account_id=a.id and s.user_id=$3
+ where a.workspace_id=$1 and a.archived_at is null and a.deleted_at is null and a.kind in ('cash','bank','e_wallet','savings') and coalesce(s.include_in_forecast,a.kind in ('cash','bank','e_wallet'))=true
+ group by a.id,s.protected_amount,s.low_balance_threshold order by a.created_at,a.id`,[workspaceId,today,userId]);
+ const selected=selectedAccount?accountRows.filter((a:any)=>a.id===selectedAccount):accountRows;
+ if(selectedAccount&&!selected.length)reject(404,'ACCOUNT_NOT_FOUND','That cash account is unavailable.');
+ const accountList=selected.filter((a:any)=>a.currency===workspace.currency);
+ if(accountRows.some((a:any)=>a.currency!==workspace.currency))flags.push('other_currency_accounts_excluded');
+ if(!accountList.length)reject(422,'NO_CASH_ACCOUNTS','Add or include a cash, bank, or e-wallet account to create a forecast.');
+ const historicDays=allowed.history?await q(tx,'select a.id,a.opening_date,coalesce(sum(t.amount) filter(where t.type=\'expense\'),0)::text as expenses,coalesce(sum(t.amount) filter(where t.type=\'income\'),0)::text as income from accounts a left join transactions t on t.workspace_id=a.workspace_id and t.account_id=a.id and t.deleted_at is null and t.type in (\'expense\',\'income\') and t.occurred_at >= greatest($2::date,a.opening_date) and t.occurred_at < $3::date and not exists(select 1 from invoice_payments ip where ip.workspace_id=t.workspace_id and ip.transaction_id=t.id) and not exists(select 1 from bill_occurrences bo where bo.workspace_id=t.workspace_id and bo.transaction_id=t.id) and not exists(select 1 from recurring_occurrences ro where ro.workspace_id=t.workspace_id and ro.transaction_id=t.id) and not exists(select 1 from forecast_transaction_overrides x where x.workspace_id=t.workspace_id and x.transaction_id=t.id and x.user_id=$4 and x.exclude_from_baseline) where a.workspace_id=$1 and a.id=any($5::uuid[]) group by a.id,a.opening_date',[workspaceId,lookback,today,userId,accountList.map((a:any)=>a.id)]):[];
+ const averages=new Map<string,{expense:string;income:string}>(),history:any[]=[];
+ for(const row of historicDays){const account=accountList.find((x:any)=>x.id===row.id);if(!account)continue;const average=historicalDailyAverages({today,openingDate:String(row.opening_date),expenses:String(row.expenses),income:String(row.income)});const activeFrom=String(row.opening_date)>lookback?String(row.opening_date):lookback;history.push({accountId:row.id,accountName:account.name,from:activeFrom,through:dateMinus(today,1),eligibleDays:average.eligibleDays,expenseTotal:String(row.expenses),incomeTotal:String(row.income),dailyExpenseAverage:average.dailyExpenseAverage,dailyIncomeAverage:average.dailyIncomeAverage});if(average.eligibleDays<28){flags.push('insufficient_history:'+row.id);continue;}averages.set(row.id,{expense:average.dailyExpenseAverage!,income:average.dailyIncomeAverage!});}
+ const accounts=accountList.map((a:any)=>({id:a.id,name:a.name,balance:asAmount(a.balance),currency:a.currency,protectedAmount:asAmount(a.protectedAmount),lowBalanceThreshold:asAmount(a.lowBalanceThreshold),dailyExpenseAverage:averages.get(a.id)?.expense??'0.0000',dailyIncomeAverage:averages.get(a.id)?.income??'0.0000'}));
+ const events:ForecastEvent[]=[],uncertainReceivables:any[]=[];
+ const append=(event:ForecastEvent)=>{if(selectedAccount&&event.accountId&&event.accountId!==selectedAccount){if(event.kind==='transfer')flags.push('transfer_scope_boundary');return;}events.push(event);};
+ const billCoveredRuleDates=new Set<string>();
+ if(allowed.recurring&&allowed.bills){const covered=await q(tx,`select b.recurring_rule_id as "ruleId",o.due_on as date from bill_occurrences o join bills b on b.workspace_id=o.workspace_id and b.id=o.bill_id where o.workspace_id=$1 and b.recurring_rule_id is not null and o.status in ('unpaid','paid','skipped') and o.due_on between $2::date and $3::date`,[workspaceId,today,end]);for(const row of covered)billCoveredRuleDates.add(row.ruleId+'|'+String(row.date));}
+ const futureJournals=await q(tx,`select a.id as "accountId",je.effective_date as date,coalesce(sum(jl.debit-jl.credit),0)::text as amount,
+ je.transaction_id as "transactionId",coalesce(t.type,'income') as type,coalesce(je.transaction_id,je.id) as "sourceId"
+ from journal_entries je join journal_lines jl on jl.workspace_id=je.workspace_id and jl.entry_id=je.id
+ join accounts a on a.workspace_id=jl.workspace_id and a.ledger_account_id=jl.ledger_account_id
+ left join transactions t on t.workspace_id=je.workspace_id and t.id=je.transaction_id
+ where je.workspace_id=$1 and je.effective_date>$2::date and je.effective_date<=$3::date and a.id=any($4::uuid[])
+ group by a.id,je.effective_date,je.transaction_id,t.type,coalesce(je.transaction_id,je.id) having sum(jl.debit-jl.credit)<>0`,[workspaceId,today,end,accountList.map((a:any)=>a.id)]);
+ for(const r of futureJournals)append({id:'journal:'+r.sourceId+':'+r.accountId+':'+r.date,date:String(r.date),accountId:r.accountId,amount:String(r.amount),kind:r.type==='transfer'?'transfer':'transaction',description:r.type==='transfer'?'Scheduled transfer':'Recorded transaction',sourceId:r.sourceId});
+ if(allowed.recurring){
+  const recordedOccurrences=await q(tx,"select rule_id as \"ruleId\",scheduled_date as date from recurring_occurrences where workspace_id=$1 and scheduled_date between $2::date and $3::date and status in ('pending','posted','skipped')",[workspaceId,today,end]);
+  const byKey=new Set<string>(recordedOccurrences.map((row:any)=>row.ruleId+'|'+String(row.date)));
+  const recurring=await q(tx,`select o.id,o.scheduled_date as date,o.template_snapshot as snapshot,o.rule_id as "ruleId",o.status,r.type,r.account_id as "accountId",r.destination_account_id as "destinationAccountId",r.amount::text,r.version
+   from recurring_occurrences o join recurring_rules r on r.workspace_id=o.workspace_id and r.id=o.rule_id
+   where o.workspace_id=$1 and o.scheduled_date between $2::date and $3::date and o.status='pending' and r.status='active' and not exists(select 1 from bills b where b.workspace_id=r.workspace_id and b.recurring_rule_id=r.id and b.enabled=true and b.archived_at is null)`,[workspaceId,today,end]);
+  for(const row of recurring){if(billCoveredRuleDates.has(row.ruleId+'|'+String(row.date)))continue;const snap=asJson(row.snapshot),sign=row.type==='expense'?'-':'',amount=sign+String(snap.amount??row.amount);const acc=snap.accountId??row.accountId,dest=snap.destinationAccountId??row.destinationAccountId;
+   if(row.type==='transfer'&&dest){append({id:'recurring:'+row.id+':out',date:String(row.date),accountId:acc,amount:'-'+String(snap.amount??row.amount),kind:'transfer',description:'Scheduled transfer',sourceId:row.id});append({id:'recurring:'+row.id+':in',date:String(row.date),accountId:dest,amount:String(snap.amount??row.amount),kind:'transfer',description:'Scheduled transfer',sourceId:row.id});}
+   else append({id:'recurring:'+row.id,date:String(row.date),accountId:acc,amount,kind:'recurring',description:'Recurring '+row.type,sourceId:row.id});
+  }
+  const rules=await q(tx,`select r.id,r.type,r.account_id as "accountId",r.destination_account_id as "destinationAccountId",r.amount::text,r.currency,r.frequency,r.interval,r.anchor_date as "anchorDate",r.next_occurrence_index as "nextIndex",r.end_date as "endDate",r.version from recurring_rules r where r.workspace_id=$1 and r.status='active' and r.next_due_date<=$2::date and not exists(select 1 from bills b where b.workspace_id=r.workspace_id and b.recurring_rule_id=r.id and b.enabled=true and b.archived_at is null)`,[workspaceId,end]);
+  for(const rule of rules){let index=Number(rule.nextIndex),count=0,date=nextOccurrenceDate(String(rule.anchorDate),rule.frequency,Number(rule.interval),index);while(date<=end&&count++<100&&(!rule.endDate||date<=String(rule.endDate))){if(date>=today&&!byKey.has(rule.id+'|'+date)&&!billCoveredRuleDates.has(rule.id+'|'+date)){if(rule.type==='transfer'&&rule.destinationAccountId){append({id:'rule:'+rule.id+':'+date+':out',date,accountId:rule.accountId,amount:'-'+rule.amount,kind:'transfer',description:'Scheduled transfer',sourceId:rule.id});append({id:'rule:'+rule.id+':'+date+':in',date,accountId:rule.destinationAccountId,amount:String(rule.amount),kind:'transfer',description:'Scheduled transfer',sourceId:rule.id});}else append({id:'rule:'+rule.id+':'+date,date,accountId:rule.accountId,amount:(rule.type==='expense'?'-':'')+String(rule.amount),kind:'recurring',description:'Recurring '+rule.type,sourceId:rule.id});}index++;date=nextOccurrenceDate(String(rule.anchorDate),rule.frequency,Number(rule.interval),index);}}
+ } else flags.push('recurring_source_excluded');
+ if(allowed.bills){
+  const schedules=await q(tx,`select b.id,b.name,b.amount::text,b.currency,b.frequency,b.interval,b.anchor_date as "anchorDate",b.next_due_date as "nextDueDate",b.end_date as "endDate",coalesce(b.payment_account_id,r.account_id) as "accountId",b.recurring_rule_id as "recurringRuleId" from bills b left join recurring_rules r on r.workspace_id=b.workspace_id and r.id=b.recurring_rule_id where b.workspace_id=$1 and b.enabled=true and b.archived_at is null`,[workspaceId]);
+  const occurrenceRows=await q(tx,`select o.id,o.bill_id as "billId",o.due_on as "dueOn",coalesce(o.expected_payment_on,o.due_on) as "expectedDate",o.name,o.amount::text,o.currency,coalesce(o.payment_account_id,b.payment_account_id,r.account_id) as "accountId",o.status,o.transaction_id as "transactionId"
+   from bill_occurrences o join bills b on b.workspace_id=o.workspace_id and b.id=o.bill_id left join recurring_rules r on r.workspace_id=b.workspace_id and r.id=b.recurring_rule_id
+   where o.workspace_id=$1 and o.status in ('unpaid','paid','skipped') and coalesce(o.expected_payment_on,o.due_on)<=$2::date`,[workspaceId,end]);
+  const existing=new Map(occurrenceRows.map((row:any)=>[row.billId+'|'+String(row.dueOn),row])),emitted=new Set<string>();
+  const addBill=(bill:any,due:string,row:any)=>{const key=bill.id+'|'+due;if(emitted.has(key))return;emitted.add(key);const date=String(row?.expectedDate??due)<today?today:String(row?.expectedDate??due);if(bill.currency!==workspace.currency){flags.push('bill_currency_mismatch');return;}const accountId=row?.accountId??bill.accountId??null;if(!accountId)flags.push('unassigned_bill_account');append({id:'bill:'+(row?.id??bill.id+':'+due),date,accountId,amount:'-'+String(row?.amount??bill.amount),kind:'bill',description:String(row?.name??bill.name).slice(0,120),sourceId:row?.id??bill.id});};
+  for(const bill of schedules){
+   if(bill.currency!==workspace.currency)continue;const frequency=String(bill.frequency),interval=Number(bill.interval);let index=0;
+   if(frequency==='week')index=Math.max(0,Math.floor((Date.parse(today+'T00:00:00Z')-Date.parse(String(bill.anchorDate)+'T00:00:00Z'))/(7*interval*86400000))-1);
+   if(frequency==='month'){const [ay,am]=String(bill.anchorDate).split('-').map(Number),[ty,tm]=today.split('-').map(Number);index=Math.max(0,Math.floor(((ty!-ay!)*12+tm!-am!)/interval)-1);}
+   if(frequency==='year'){index=Math.max(0,Math.floor((Number(today.slice(0,4))-Number(String(bill.anchorDate).slice(0,4)))/interval)-1);}
+   let due=frequency==='once'?String(bill.nextDueDate):nextOccurrenceDate(String(bill.anchorDate),frequency as 'week'|'month'|'year',interval,index),count=0;
+   while(due<=end&&count++<220){if((!bill.endDate||due<=String(bill.endDate))&&due>=today){const row=existing.get(bill.id+'|'+due);if(row?.status==='unpaid')addBill(bill,due,row);else if(row){emitted.add(bill.id+'|'+due);if(row.status==='paid'&&!row.transactionId)flags.push('legacy_paid_bill_without_transaction');}else addBill(bill,due,null);}if(frequency==='once')break;index++;due=nextOccurrenceDate(String(bill.anchorDate),frequency as 'week'|'month'|'year',interval,index);}
+  }
+  for(const row of occurrenceRows){if(emitted.has(row.billId+'|'+String(row.dueOn)))continue;if(row.status==='skipped'||row.status==='paid'&&row.transactionId){emitted.add(row.billId+'|'+String(row.dueOn));continue;}if(row.status==='paid'&&!row.transactionId){flags.push('legacy_paid_bill_without_transaction');emitted.add(row.billId+'|'+String(row.dueOn));continue;}const bill=schedules.find((item:any)=>item.id===row.billId)??{id:row.billId,name:row.name,amount:row.amount,currency:row.currency,accountId:row.accountId};addBill(bill,String(row.dueOn),row);}
+ }else flags.push('bills_source_excluded');
+ if(workspace.kind==='business'&&allowed.invoices){
+  const invoices=await q(tx,`select i.id,i.number,i.due_date as "dueDate",i.expected_payment_on as "explicitExpectedDate",coalesce(i.expected_payment_on,i.due_date) as "expectedDate",i.currency,i.total::text,coalesce(sum(p.amount) filter(where p.reversed_at is null),0)::text as paid,i.expected_account_id as "accountId"
+   from invoices i left join invoice_payments p on p.workspace_id=i.workspace_id and p.invoice_id=i.id where i.workspace_id=$1 and i.state='issued' and i.archived_at is null and coalesce(i.expected_payment_on,i.due_date)<=$2::date group by i.id`,[workspaceId,end]);
+  for(const inv of invoices){if(inv.currency!==workspace.currency){flags.push('invoice_currency_mismatch');continue;}if(selectedAccount&&inv.accountId&&inv.accountId!==selectedAccount)continue;const outstanding=toUnits(String(inv.total))-toUnits(String(inv.paid));if(outstanding<=0n)continue;const expected=String(inv.expectedDate);if(expected<today&&(!inv.explicitExpectedDate||String(inv.explicitExpectedDate)<today)){uncertainReceivables.push({invoiceId:inv.id,invoiceNumber:String(inv.number??'').slice(0,80),dueDate:String(inv.dueDate),outstanding:fromUnits(outstanding),currency:inv.currency,accountId:inv.accountId??null});continue;}if(!inv.accountId)flags.push('unassigned_invoice_account');append({id:'invoice:'+inv.id,date:expected,accountId:inv.accountId,amount:fromUnits(outstanding),kind:'invoice',description:'Expected invoice '+String(inv.number??'').slice(0,80),sourceId:inv.id});}
+ }else if(workspace.kind==='business')flags.push('invoices_source_excluded');
+ if(hasUnresolvedSourceOverlap(events))flags.push('unresolved_source_overlap');
+ const result=projectCashflow({today,horizonDays:horizon,accounts,events,startingQualityFlags:flags,workspaceProtectedAmount:String(prefs.safety_buffer)});
+ const historyTransactions=allowed.history?await q(tx,`select t.id,t.occurred_at as date,t.type,t.merchant,c.name as "categoryName",t.amount::text,t.version,coalesce(o.exclude_from_baseline,false) as excluded,coalesce(o.version,0) as "overrideVersion"
+  from transactions t join accounts a on a.workspace_id=t.workspace_id and a.id=t.account_id left join categories c on c.workspace_id=t.workspace_id and c.id=t.category_id
+  left join forecast_transaction_overrides o on o.workspace_id=t.workspace_id and o.transaction_id=t.id and o.user_id=$4
+  where t.workspace_id=$1 and a.id=any($2::uuid[]) and t.deleted_at is null and t.type in ('income','expense') and t.occurred_at >= $3::date and t.occurred_at < $5::date
+    and not exists(select 1 from invoice_payments ip where ip.workspace_id=t.workspace_id and ip.transaction_id=t.id)
+    and not exists(select 1 from bill_occurrences bo where bo.workspace_id=t.workspace_id and bo.transaction_id=t.id)
+    and not exists(select 1 from recurring_occurrences ro where ro.workspace_id=t.workspace_id and ro.transaction_id=t.id)
+  order by t.occurred_at desc,t.id limit 100`,[workspaceId,accountList.map((account:any)=>account.id),lookback,userId,today]):[];
+ return {result,accounts,events,uncertainReceivables,today,end,flags,allowed,history,historyTransactions};
+}
+
