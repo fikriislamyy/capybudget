@@ -9,6 +9,7 @@
     "dev:worker": "bun --hot apps/api/src/email/worker.ts",
     "dev:tracking-worker": "bun --hot apps/api/src/tracking/worker.ts",
     "dev:assistant-worker": "bun --env-file=.env --hot apps/api/src/assistant/worker.ts",
+    "dev:reports-worker": "bun --env-file=.env --hot apps/api/src/reports/worker.ts",
     "build": "bun run --cwd apps/web build",
     "check": "bun run --cwd apps/web check && bun run --cwd apps/api check",
     "db:generate": "bun run --cwd apps/api db:generate",

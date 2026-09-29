@@ -1,4 +1,4 @@
-/** Start the API, local email worker, and recurring-entry worker together for development. */
+/** Start the API and local background workers together for development. */
 const children = [
   Bun.spawn([process.execPath, '--hot', 'src/server.ts'], {
     cwd: import.meta.dir.replace(/\/src$/, ''),
@@ -16,6 +16,11 @@ const children = [
     stderr: 'inherit'
   }),
   Bun.spawn([process.execPath, '--hot', 'src/assistant/worker.ts'], {
+    cwd: import.meta.dir.replace(/\/src$/, ''),
+    stdout: 'inherit',
+    stderr: 'inherit'
+  }),
+  Bun.spawn([process.execPath, '--hot', 'src/reports/worker.ts'], {
     cwd: import.meta.dir.replace(/\/src$/, ''),
     stdout: 'inherit',
     stderr: 'inherit'

@@ -34,10 +34,11 @@
     "bullmq": "latest",
     "drizzle-orm": "latest",
     "elysia": "latest",
+    "exceljs": "^4.4.0",
     "ioredis": "latest",
     "nodemailer": "latest",
-    "postgres": "latest",
     "playwright": "1.63.0",
+    "postgres": "latest",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
