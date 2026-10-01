@@ -42,4 +42,5 @@ export function getLocale(value?: string | null): Locale {
 }
 
 export const AUTH_UI_CONTEXT = 'capybudget-auth-ui';
-export type AuthUiState = { locale: Locale; dark: boolean };
+export type ThemeChoice = 'light' | 'dark' | 'system';
+export type AuthUiState = { locale: Locale; dark: boolean; theme: ThemeChoice };

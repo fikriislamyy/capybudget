@@ -12,6 +12,7 @@ import { businessRoutes } from './business/routes';
 import { assistantRoutes } from './assistant/routes';
 import { reportsRoutes } from './reports/routes';
 import { notificationRoutes } from './notifications/routes';
+import { uxRoutes } from './ux/routes';
 
 const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
 const trustedProxyIps = new Set((process.env.TRUSTED_PROXY_IPS ?? '').split(',').map((ip) => ip.trim()).filter(Boolean));
@@ -37,6 +38,7 @@ export const app = new Elysia()
   .use(privacyRoutes)
   .use(trackingRoutes)
   .use(notificationRoutes)
+  .use(uxRoutes)
   .use(personalFinanceRoutes)
   .use(businessRoutes)
   .use(assistantRoutes)

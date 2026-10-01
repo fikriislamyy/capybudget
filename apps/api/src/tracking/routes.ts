@@ -73,7 +73,7 @@ async function withWorkspace<T>(request: Request, workspaceId: string, run: (tx:
 }
 const q = (tx: TransactionSql, text: string, values: unknown[] = []) => tx.unsafe(text,values as never[]);
 
-async function seed(tx: TransactionSql, workspaceId: string, currency: string) {
+export async function seedWorkspace(tx: TransactionSql, workspaceId: string, currency: string) {
   await q(tx,"insert into ledger_accounts(workspace_id,code,name,class,currency) values($1,'equity:opening','Opening balance','equity',$2) on conflict do nothing",[workspaceId,currency]);
   const defaults=[['income','Salary','leaf'],['income','Other income','circle-plus'],['expense','Food and dining','utensils'],['expense','Transport','car'],['expense','Housing','house'],['expense','Bills and utilities','zap'],['expense','Shopping','shopping-bag'],['expense','Health','heart-pulse'],['expense','Entertainment','clapperboard'],['expense','Other expense','circle-help']];
   for(let i=0;i<defaults.length;i++){
@@ -232,7 +232,7 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
        const [w]=created?[created]:await tx.unsafe("select id,name,kind,currency,timezone from workspaces where owner_user_id=$1 and kind='personal' and archived_at is null",[actor.id]);
        await tx.unsafe("insert into workspace_memberships(workspace_id,user_id,role) values($1,$2,'owner') on conflict do nothing",[w.id,actor.id]);
        await tx.unsafe("select set_config('app.workspace_id',$1,true)",[String(w.id)]);
-       await seed(tx,String(w.id),'IDR'); result.push(w);
+       await seedWorkspace(tx,String(w.id),'IDR'); result.push(w);
      }
      return Response.json({items:result},{headers:{'Cache-Control':'no-store'}});
    });
@@ -251,7 +251,7 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
      await tx.unsafe("insert into workspace_memberships(workspace_id,user_id,role) values($1,$2,'owner')",[w.id,actor.id]);
      await tx.unsafe("select set_config('app.workspace_id',$1,true)",[String(w.id)]);
      await tx.unsafe('insert into business_profiles(workspace_id,legal_name) values($1,$2) on conflict(workspace_id) do nothing',[w.id,b.name.trim()]);
-     await seed(tx,String(w.id),currency);return Response.json({workspace:w},{status:201});
+     await seedWorkspace(tx,String(w.id),currency);return Response.json({workspace:w},{status:201});
    });
  })
  .get('/api/workspaces/:workspaceId/accounts',async({request,params})=>withWorkspace(request,params.workspaceId,async(tx)=>{
