@@ -1,4 +1,5 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import {encryptField,decryptField} from '../security/encryption';
+import { createHash, createDecipheriv } from 'node:crypto';
 
 function key(): Buffer {
   const encoded=process.env.EMAIL_JOB_ENCRYPTION_KEY;
@@ -8,13 +9,13 @@ function key(): Buffer {
   return decoded;
 }
 
-export function encryptPushAuth(value:string):string {
-  const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key(),iv);
-  const encrypted=Buffer.concat([cipher.update(value,'utf8'),cipher.final()]);
-  return [iv.toString('base64url'),cipher.getAuthTag().toString('base64url'),encrypted.toString('base64url')].join('.');
-}
+type PushScope={workspaceId:string;userId:string;endpoint:string};
+const scopedContext=(scope:PushScope)=>({purpose:'push-auth',owner:scope.userId,entity:createHash('sha256').update(scope.workspaceId+'\0'+scope.endpoint).digest('hex'),field:'auth'});
+export function encryptPushAuth(value:string,scope?:PushScope):string {return scope?'push2:'+encryptField(value,scopedContext(scope)):encryptField(value,{purpose:'push-auth',owner:'notification-service',entity:'subscription',field:'auth'});}
 
-export function decryptPushAuth(value:string):string {
+export function decryptPushAuth(value:string,scope?:PushScope):string {
+  if(value.startsWith('push2:')){if(!scope)throw new Error('Push credential scope is required.');return decryptField(value.slice(6),scopedContext(scope));}
+  if(value.startsWith('cbenc:'))return decryptField(value,{purpose:'push-auth',owner:'notification-service',entity:'subscription',field:'auth'});
   const [iv,tag,ciphertext]=value.split('.');
   if(!iv||!tag||!ciphertext)throw new Error('Invalid encrypted push authentication key');
   const decipher=createDecipheriv('aes-256-gcm',key(),Buffer.from(iv,'base64url'));

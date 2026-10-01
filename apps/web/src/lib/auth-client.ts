@@ -1,5 +1,6 @@
 import { createAuthClient } from 'better-auth/svelte';
-import { emailOTPClient } from 'better-auth/client/plugins';
+import { emailOTPClient, twoFactorClient } from 'better-auth/client/plugins';
+import { goto } from '$app/navigation';
 import { env } from '$env/dynamic/public';
 
 export const authClient = createAuthClient({
@@ -15,5 +16,5 @@ export const authClient = createAuthClient({
       return response;
     }
   },
-  plugins: [emailOTPClient()]
+  plugins: [emailOTPClient(), twoFactorClient({onTwoFactorRedirect: async()=>{await goto('/two-factor');}})]
 });

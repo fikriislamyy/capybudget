@@ -1,4 +1,7 @@
 <script lang="ts">
+  import {getContext as privacyContext} from 'svelte';
+  import {concealed,PRIVACY_CONTEXT,type PrivacyState} from '$lib/privacy';
+  const privacy=privacyContext<PrivacyState>(PRIVACY_CONTEXT);
   import { getContext } from 'svelte';
   import { AUTH_UI_CONTEXT, type AuthUiState } from '$lib/i18n/auth';
   import { financeText } from '$lib/i18n/finance';
@@ -12,7 +15,7 @@
   const t=(key:Parameters<typeof financeText>[1])=>financeText(ui.locale,key);
   let items:Budget[]=$state([]),categories:Category[]=$state([]),loading=$state(true),error=$state(''),name=$state(''),amount=$state(''),categoryId=$state(''),cadence=$state<'weekly'|'monthly'>('monthly'),saving=$state(false),thresholds:Record<string,string>=$state({});
   async function load(){if(!workspace.ready||!workspace.selectedId)return;loading=true;try{const [b,c]=await Promise.all([fetch(`/api/workspaces/${workspace.selectedId}/budgets`),fetch(`/api/workspaces/${workspace.selectedId}/categories`)]);if(!b.ok||!c.ok)throw new Error(t('error'));items=(await b.json()).items;categories=(await c.json()).items.filter((x:Category)=>x.type==='expense');}catch(e){error=e instanceof Error?e.message:t('error');}finally{loading=false;}}
-  $effect(()=>{if(workspace.ready&&workspace.selectedId)void load();});
+  $effect(()=>{void (workspace as {revision?:number}).revision;if(workspace.ready&&workspace.selectedId)void load();});
   async function create(event:SubmitEvent){event.preventDefault();if(saving)return;saving=true;error='';try{const response=await fetch(`/api/workspaces/${workspace.selectedId}/budgets`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,amount,categoryId,cadence,alertThresholds:[80,100]})});const body=await response.json();if(!response.ok)throw new Error(body.message);name='';amount='';await load();}catch(e){error=e instanceof Error?e.message:t('error');}finally{saving=false;}}
   async function archive(id:string){await fetch(`/api/workspaces/${workspace.selectedId}/budgets/${id}`,{method:'DELETE'});await load();}
   async function saveThresholds(event:SubmitEvent,id:string){event.preventDefault();try{const values=(thresholds[id]??'80,100').split(',').map((value)=>Number(value.trim()));const response=await fetch(`/api/workspaces/${workspace.selectedId}/budgets/${id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({alertThresholds:values})});const body=await response.json();if(!response.ok)throw new Error(body.message);await load();}catch(e){error=e instanceof Error?e.message:t('error');}}
@@ -25,15 +28,15 @@
     <form onsubmit={create}><Field.FieldGroup>
       <Field.Field><Field.FieldLabel for="budget-name">{t('name')}</Field.FieldLabel><Input id="budget-name" bind:value={name} maxlength={100} required /></Field.Field>
       <Field.Field><Field.FieldLabel for="budget-category">{t('category')}</Field.FieldLabel><select id="budget-category" bind:value={categoryId} required><option value="">{t('category')}</option>{#each categories as item}<option value={item.id}>{item.name}</option>{/each}</select></Field.Field>
-      <Field.Field><Field.FieldLabel for="budget-amount">{t('amount')}</Field.FieldLabel><Input id="budget-amount" type="text" inputmode="decimal" bind:value={amount} required /></Field.Field>
+      <Field.Field><Field.FieldLabel for="budget-amount">{t('amount')}</Field.FieldLabel><Input id="budget-amount" inputmode="decimal"  type={privacy.hidden?'password':'text'} bind:value={amount} required /></Field.Field>
       <Field.Field><Field.FieldLabel for="budget-cadence">{t('cadence')}</Field.FieldLabel><select id="budget-cadence" bind:value={cadence}><option value="weekly">{t('weekly')}</option><option value="monthly">{t('monthly')}</option></select></Field.Field>
     </Field.FieldGroup><Button class="submit" type="submit" disabled={saving||!workspace.selectedId}>{saving?'…':t('addBudget')}</Button></form>
   </Card.Content></Card.Root>
   <section class="list" aria-label={t('budgets')}>
     {#if loading}<p>{t('loading')}</p>{:else if items.length===0}<Card.Root><Card.Content><p>{t('emptyBudgets')}</p></Card.Content></Card.Root>{:else}
       {#each items as item (item.id)}<Card.Root><Card.Header><div class="title-row"><div><Card.Title>{item.categoryName}</Card.Title><Card.Description>{item.name} · {item.cadence==='weekly'?t('weekly'):t('monthly')} · {item.period.from}—{item.period.to}</Card.Description></div><Button variant="ghost" size="sm" onclick={()=>archive(item.id)}>{t('archive')}</Button></div></Card.Header><Card.Content>
-        <div class="numbers"><span>{t('spent')} <strong>{item.currency} {item.spent}</strong></span><span>{t('remaining')} <strong>{item.currency} {item.remaining}</strong></span></div>
-        {#if item.usedPercent===null}<p class="caption">{t('zeroBudgetSpend')}</p>{:else}<progress aria-label={`${item.categoryName} budget ${item.usedPercent.toFixed(0)}% used`} max="100" value={Math.min(100,item.usedPercent)}></progress><p class="caption">{item.usedPercent.toFixed(1)}% used</p>{/if}
+        <div class="numbers"><span>{t('spent')} <strong>{item.currency} {item.spent}</strong></span><span>{t('remaining')} <strong>{item.currency} {concealed(item.remaining,privacy.hidden)}</strong></span></div>
+        {#if privacy.hidden}<p class="caption">••••••</p>{:else if item.usedPercent===null}<p class="caption">{t('zeroBudgetSpend')}</p>{:else}<progress aria-label={`${item.categoryName} budget ${item.usedPercent.toFixed(0)}% used`} max="100" value={Math.min(100,item.usedPercent)}></progress><p class="caption">{item.usedPercent.toFixed(1)}% used</p>{/if}
         <form class="thresholds" onsubmit={(event)=>saveThresholds(event,item.id)}><label for={`thresholds-${item.id}`}>{t('thresholds')}</label><Input id={`thresholds-${item.id}`} bind:value={thresholds[item.id]} placeholder={item.alertThresholds.join(',')} /><Button variant="outline" size="sm" type="submit">{t('save')}</Button></form>
       </Card.Content></Card.Root>{/each}
     {/if}

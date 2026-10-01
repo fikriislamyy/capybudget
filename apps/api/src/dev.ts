@@ -1,5 +1,6 @@
 /** Start the API and local background workers together for development. */
 const children = [
+  Bun.spawn([process.execPath, '--hot', 'src/privacy/worker.ts'], {cwd: import.meta.dir.replace(/\/src$/, ''),stdout:'inherit',stderr:'inherit'}),
   Bun.spawn([process.execPath, '--hot', 'src/server.ts'], {
     cwd: import.meta.dir.replace(/\/src$/, ''),
     stdout: 'inherit',

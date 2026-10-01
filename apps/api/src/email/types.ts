@@ -1,6 +1,6 @@
 export type EmailLocale = 'en' | 'id';
 
-export type EmailMessage =
+export type EmailMessage = {securityOwnerId?:string;securityGeneration?:number} & (
   | {
       kind: 'verification';
       to: string;
@@ -62,10 +62,15 @@ export type EmailMessage =
       message: string;
       locale: EmailLocale;
       expiresAt: number;
-    };
+    }
+
+);
 
 export type EncryptedEmailJob = {
-  version: 1;
+  version: 1 | 2;
+  keyId?: string;
+  owner?: string;
+  entity?: string;
   iv: string;
   tag: string;
   ciphertext: string;

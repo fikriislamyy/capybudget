@@ -1,3 +1,4 @@
+import { client } from '../db';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { randomUUID } from 'node:crypto';
@@ -37,6 +38,10 @@ function getQueue(): Queue<EncryptedEmailJob> {
 }
 
 export async function enqueueEmail(message: EmailMessage, jobId?: string): Promise<void> {
-  const encrypted = encryptEmailMessage(message);
+  const ownerId='userId' in message?message.userId:'requestedBy' in message?message.requestedBy:undefined;
+  const [owner]=ownerId?await client`select id,account_status,security_version from "user" where id=${ownerId}`:await client`select id,account_status,security_version from "user" where email=${message.to}`;
+  if(owner?.account_status==='deletion_pending'||(ownerId&&!owner))return;
+  const protectedMessage=owner?{...message,securityOwnerId:owner.id,securityGeneration:Number(owner.security_version)}:message;
+  const encrypted = encryptEmailMessage(protectedMessage);
   await getQueue().add(message.kind, encrypted, { jobId: jobId ?? randomUUID() });
 }

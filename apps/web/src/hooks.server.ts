@@ -6,7 +6,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.user = null;
   event.locals.sessionState = 'available';
   const path = event.url.pathname;
-  const privateRoots = ['/dashboard','/transactions','/accounts','/categories','/recurring'];
+  const privateRoots = ['/dashboard','/transactions','/accounts','/categories','/recurring','/budgets','/goals','/bills','/notifications','/reports','/assistant','/invoices','/business','/settings'];
   const isPrivate = privateRoots.some((root) => path === root || path.startsWith(root + '/'));
   const isEntry = path === '/login' || path === '/sign-up';
   const cookie = event.request.headers.get('cookie');
@@ -48,10 +48,22 @@ export const handle: Handle = async ({ event, resolve }) => {
     return Response.redirect(new URL('/dashboard', event.url), 303);
   }
 
+  if ((isPrivate || path === '/unlock') && event.locals.user) {
+    try {
+      const status = await fetch(`${apiOrigin}/api/security/status`, {headers:cookie?{cookie}:{},cache:'no-store',signal:AbortSignal.timeout(4000)});
+      if (!status.ok) return Response.redirect(new URL('/login',event.url),303);
+      const security = await status.json();
+      if (security.locked && path !== '/unlock') return Response.redirect(new URL('/unlock',event.url),303);
+      if (!security.locked && path === '/unlock') return Response.redirect(new URL('/dashboard',event.url),303);
+    } catch { return new Response('Security service is temporarily unavailable.',{status:503,headers:{'Cache-Control':'no-store'}}); }
+  }
   const response = await resolve(event);
-  if (path.startsWith('/api/auth/') || path.startsWith('/dashboard') || path === '/reset-password') {
+  if (isPrivate || path.startsWith('/api/') || ['/unlock','/two-factor','/reset-password','/deletion-receipt'].includes(path)) {
     response.headers.set('Cache-Control', 'no-store');
     response.headers.set('Referrer-Policy', 'no-referrer');
   }
+  response.headers.set('X-Content-Type-Options','nosniff');
+  response.headers.set('Content-Security-Policy',"frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
+  response.headers.set('Permissions-Policy','publickey-credentials-get=(self), publickey-credentials-create=(self)');
   return response;
 };

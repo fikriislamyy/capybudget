@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getContext, onMount, tick } from 'svelte';
   import { AUTH_UI_CONTEXT, type AuthUiState } from '$lib/i18n/auth';
-  import { readPrivacyMode, writePrivacyMode } from '$lib/privacy';
+  import { PRIVACY_CONTEXT,type PrivacyState,readPrivacyMode, writePrivacyMode } from '$lib/privacy';
   import * as Card from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
   type Workspace={id:string;currency:string;kind:'personal'|'business'};
@@ -9,8 +9,10 @@
   type ReportRun={id:string;reportType:string;preset:string;status:string;generatedAt:string;periodFrom:string;periodToExclusive:string;currency:string;rowCount:number;expiresAt:string;failureCode?:string|null};
   type Dashboard={summary:{currency:string;period:{from:string;through:string;toExclusive:string;preset:string};cashBalance:string;trackedAccountNetBalance:string;income:string;expense:string;netActivity:string;cashflow:{opening:string;closing:string;reconciled:boolean};generatedAt:string};flags:string[];accounts:any[];series:any[];categories:any[];budgetActual:any[];goals:any[];bills:any[];cashflowRows:any[]};
   const authUi=getContext<AuthUiState>(AUTH_UI_CONTEXT);
+  const privacy=getContext<PrivacyState>(PRIVACY_CONTEXT);
+  $effect(()=>{privacyMode=privacy.hidden;});
   const workspace=getContext<{selectedId:string;ready:boolean;items:Workspace[]}>('capybudget-workspaces');
-  let preset=$state('this_month'),data:Dashboard|undefined=$state(),privacyMode=$state(false),mappings:CashflowMapping[]=$state([]),runs:ReportRun[]=$state([]),loading=$state(false),error=$state(''),status=$state(''),runId=$state('');
+  let preset=$state('this_month'),data:Dashboard|undefined=$state(),privacyMode=$state(true),mappings:CashflowMapping[]=$state([]),runs:ReportRun[]=$state([]),loading=$state(false),error=$state(''),status=$state(''),runId=$state('');
   let incomeChart=$state<HTMLDivElement>(),trendChart=$state<HTMLDivElement>(),pieChart=$state<HTMLDivElement>(),cashChart=$state<HTMLDivElement>();
   let charts:any[]=[],requestSequence=0,activeRequest:AbortController|undefined;
   const label=(en:string,id:string)=>authUi.locale==='id'?id:en;
@@ -44,13 +46,13 @@
   function togglePrivacy(){privacyMode=!privacyMode;writePrivacyMode(privacyMode);}
   async function exportExisting(id:string,format:'csv'|'xlsx'|'pdf'){if(!workspace.selectedId)return;error='';try{await waitForRun(id);await startExport(id,format);}catch(e){error=e instanceof Error?e.message:'Export failed.';status='';}}
   async function saveMapping(categoryId:string,activity:string){if(!workspace.selectedId)return;const response=await fetch(`/api/workspaces/${workspace.selectedId}/reports/cashflow/mappings/${categoryId}`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({activity})});if(!response.ok){const body=await response.json();error=body.message??label('Could not update category mapping.','Gagal memperbarui kategori.');return;}mappings=mappings.map(mapping=>mapping.categoryId===categoryId?{...mapping,activity}:mapping);if(data)await load(workspace.selectedId);}
-  $effect(()=>{const locale=authUi.locale,dark=authUi.dark,current=data,privateView=privacyMode;void locale;void dark;void privateView;if(current)void tick().then(drawCharts);});
-  $effect(()=>{const id=workspace.selectedId,period=preset;if(workspace.ready&&id)void load(id);return()=>{activeRequest?.abort();charts.forEach(chart=>chart.dispose());charts=[];};});
+  $effect(()=>{void (workspace as {revision?:number}).revision;const locale=authUi.locale,dark=authUi.dark,current=data,privateView=privacyMode;void locale;void dark;void privateView;if(current)void tick().then(drawCharts);});
+  $effect(()=>{void (workspace as {revision?:number}).revision;const id=workspace.selectedId,period=preset;if(workspace.ready&&id)void load(id);return()=>{activeRequest?.abort();charts.forEach(chart=>chart.dispose());charts=[];};});
   onMount(()=>{privacyMode=readPrivacyMode();return()=>{charts.forEach(chart=>chart.dispose());};});
 </script>
 
 <svelte:head><title>{label('Reports and analytics','Laporan dan analitik')} · CapyBudget</title></svelte:head>
-<header class="heading"><div><p class="eyebrow">{label('A CLEAR VIEW OF YOUR MONEY','RINGKASAN KEUANGAN ANDA')}</p><h1>{label('Reports and analytics','Laporan dan analitik')}</h1><p>{label('Recorded activity by workspace period. Forecasts are shown separately.','Aktivitas tercatat untuk periode workspace. Proyeksi ditampilkan terpisah.')}</p></div><div class="controls"><Button variant="outline" onclick={togglePrivacy} aria-pressed={privacyMode}>{privacyMode?label('Show amounts','Tampilkan jumlah'):label('Hide amounts','Sembunyikan jumlah')}</Button><label for="period">{label('Period','Periode')}<select id="period" bind:value={preset} onchange={()=>{if(workspace.selectedId)void load(workspace.selectedId);}}>{#each presets as item}<option value={item[0]}>{label(item[1],item[2])}</option>{/each}</select></label><div class="exports"><Button variant="outline" onclick={()=>void exportFile('csv')}>CSV</Button><Button variant="outline" onclick={()=>void exportFile('xlsx')}>Excel</Button><Button variant="outline" onclick={()=>void exportFile('pdf')}>PDF</Button></div></div></header>
+<header class="heading"><div><p class="eyebrow">{label('A CLEAR VIEW OF YOUR MONEY','RINGKASAN KEUANGAN ANDA')}</p><h1>{label('Reports and analytics','Laporan dan analitik')}</h1><p>{label('Recorded activity by workspace period. Forecasts are shown separately.','Aktivitas tercatat untuk periode workspace. Proyeksi ditampilkan terpisah.')}</p></div><div class="controls"><label for="period">{label('Period','Periode')}<select id="period" bind:value={preset} onchange={()=>{if(workspace.selectedId)void load(workspace.selectedId);}}>{#each presets as item}<option value={item[0]}>{label(item[1],item[2])}</option>{/each}</select></label><div class="exports"><Button variant="outline" onclick={()=>void exportFile('csv')}>CSV</Button><Button variant="outline" onclick={()=>void exportFile('xlsx')}>Excel</Button><Button variant="outline" onclick={()=>void exportFile('pdf')}>PDF</Button></div></div></header>
 {#if loading}<p role="status">{label('Loading report…','Memuat laporan…')}</p>{:else if error}<p class="error" role="alert">{error}</p>{:else if data}
   <p class="period">{data.summary.period.from} – {data.summary.period.through} · {data.summary.currency} · {label('Generated','Dibuat')} {new Date(data.summary.generatedAt).toLocaleString(authUi.locale==='id'?'id-ID':'en')}</p>
   {#if status}<p role="status">{status}</p>{/if}{#if privacyMode}<p class="flags" role="status">{label('Amounts and charts are hidden on this screen. Downloaded reports still contain financial data.','Jumlah dan grafik disembunyikan di layar ini. File yang diunduh tetap berisi data keuangan.')}</p>{/if}{#if data.flags.length}<aside class="flags" aria-label={label('Coverage notes','Catatan cakupan')}>{#each data.flags as flag}<p>{flag.replaceAll('_',' ')}</p>{/each}</aside>{/if}

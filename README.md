@@ -89,3 +89,7 @@ TRACKING_INTEGRATION=1 DATABASE_URL=postgres://capybudget:capybudget@localhost:5
 ```
 
 These checks cover concurrent scheduler processes, duplicate job claims, real SMTP disconnect after DATA, retry exhaustion, absent SMTP configuration, Redis producer failure, lost-job recovery, stale leases, suppression, deletion, and upgrade from the pre-notification schema. The rollout check creates and drops its own disposable database, so the test database role needs `CREATEDB`. The ordinary `test:notifications` command skips database integration unless `TRACKING_INTEGRATION=1` is set.
+
+## Security and privacy
+
+Security settings, TOTP/recovery codes, app PIN/device unlock, session management, account export/deletion, field encryption, shared privacy masking and encrypted local SeaweedFS backups are implemented. Start the backup scheduler with `docker compose --profile backup up -d --build backup`. See [the setup, key rotation, restore and release-check runbook](docs/security-privacy.md) before enabling these features on existing data or deploying them.

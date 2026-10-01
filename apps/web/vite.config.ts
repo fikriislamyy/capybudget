@@ -10,6 +10,8 @@ export default defineConfig({
     registerType: 'autoUpdate',
     workbox: {
       importScripts: ['/push-worker.js'],
+      navigateFallback: undefined,
+      runtimeCaching: [{urlPattern: /\/api\//,handler: 'NetworkOnly'}],
       navigateFallbackDenylist: [
         /^\/api\//,
         /^\/dashboard(?:\/|$)/,

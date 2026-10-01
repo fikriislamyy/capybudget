@@ -1,7 +1,10 @@
 {
   "name": "capybudget",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "bun --env-file=.env --hot apps/api/src/dev.ts",
     "dev:web": "bun run --cwd apps/web dev",
@@ -26,7 +29,13 @@
     "test:auth:integration": "bun run --cwd apps/api test:integration",
     "test:tracking": "bun run --cwd apps/api test:tracking",
     "test:tracking:integration": "bun run --cwd apps/api test:tracking:integration",
-    "test:auth:e2e": "bun run --cwd apps/web test:e2e"
+    "test:auth:e2e": "bun run --cwd apps/web test:e2e",
+    "dev:privacy-worker": "bun --env-file=.env --hot apps/api/src/privacy/worker.ts",
+    "security:migrate-fields": "bun --env-file=.env apps/api/src/security/migrate-fields.ts",
+    "backup:create": "bun --env-file=.env infra/backup/backup.ts create",
+    "test:security": "bun --env-file=.env test apps/api/tests/security"
   },
-  "engines": { "bun": ">=1.2.0" }
+  "engines": {
+    "bun": ">=1.2.0"
+  }
 }

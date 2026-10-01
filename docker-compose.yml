@@ -37,6 +37,23 @@ services:
       S3_BUCKET: ${S3_BUCKET:-capybudget}
     ports: ["8333:8333"]
     volumes: ["seaweedfs_data:/data"]
+  backup:
+    profiles: ["backup"]
+    build:
+      context: .
+      dockerfile: infra/backup/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://capybudget:capybudget@postgres:5432/capybudget
+      S3_ENDPOINT: http://object-storage:8333
+      BACKUP_S3_ENDPOINT: http://object-storage:8333
+      BACKUP_S3_BUCKET: capybudget-backups
+      BACKUP_POSTGRES_LOCAL: "1"
+      BACKUP_ENVIRONMENT_ID: local
+    depends_on:
+      postgres: { condition: service_healthy }
+      object-storage: { condition: service_started }
 volumes:
   postgres_data:
   redis_data:

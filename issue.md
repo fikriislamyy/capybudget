@@ -1,418 +1,467 @@
-# Notifications and Reminders — implementation plan
+# Security and Privacy — implementation plan
 
-## 1. Objective and reading order
+## 1. Goal and completion rule
 
-Build a reliable, workspace-scoped notification center for Personal and Business finances. A junior programmer or coding model should complete the numbered MVP steps in order, including their acceptance checks, before starting V2.
+Implement the Security and Privacy MVP for CapyBudget's personal and business workspaces. This document is a plan for a junior programmer or a coding model; unchecked work is not implemented work.
 
-Planning baseline: repository inspected on 2026-09-30. This document proposes work; unchecked tasks are not claims that functionality is already complete.
+Read `PRD.md` and `DESIGN.md` before starting. The repository uses `PRD.md`, not `PRD.MD`.
 
-Read these files first:
+Relevant requirements:
 
-1. `PRD.md`: sections 6.3 (budget alerts), 6.4 (reminders), 6.7 and 8 (assistant alerts and consent), 7 (money rules), 9 (security, accessibility, localization), and 17 (quality).
-2. `DESIGN.md`: sections 3 (semantic colors), 4.6 (steam notifications), 8 (motion), 9 (tone), 10 (business mode), 11 (alerts), and 13 (accessibility).
-3. `apps/api/src/db/schema.ts` and existing notification migrations before designing new tables.
-4. The existing code listed in section 3 before adding routes, producers, or workers.
+- PRD §6.1: FR-AUTH-3 TOTP, FR-AUTH-4 PIN/biometric lock, FR-AUTH-6 sessions/devices, FR-AUTH-9 export/deletion.
+- PRD §6.6: FR-RPT-9 privacy mode; §7: exact money, auditability, hard deletion for account deletion.
+- PRD §9.2–9.7: tested backups, encryption, tenant isolation, privacy, accessibility, EN/ID, browser support.
+- PRD §8: granular AI consent and minimization; §10: existing modular monolith and PWA-first architecture.
+- DESIGN §3, §7–§9, §11, §13: semantic colors, dark mode, 44px targets, reduced motion, clear security copy, accessible controls.
 
-## 2. Scope and priority decisions
+The user's priority table governs this issue: session/device management and regular backups/cloud sync are MVP even where the PRD assigns a lower priority. Finish every MVP milestone and acceptance check before reporting 100%. A configured plugin, an encryption helper, a Docker volume, or a successful backup upload alone does not complete the corresponding feature.
 
-| Feature | Phase | Deliverable |
+## 2. Feature scope
+
+| Feature | Priority | Concrete deliverable |
 |---|---|---|
-| Bill, invoice, and payment due dates | MVP | Upcoming, due-today, and overdue reminders to the authenticated workspace user |
-| Budget threshold alerts, such as 80% used | MVP | Configurable thresholds, default 80% and 100%, with accurate period totals and duplicate prevention |
-| Low-balance and unusual-spending alerts | MVP | Recorded-balance monitoring, integration with existing projected cashflow alerts, and an explainable deterministic unusual-expense rule |
-| Goal milestone celebrations | V2 | Once-per-milestone notifications and optional accessible celebration |
-| Customizable channels: push, email | V2 | Unified per-type channel matrix, device management, quiet hours, and delivery controls |
-| WhatsApp / SMS channels | Advanced | Explicit opt-in, verified destinations, provider adapters, delivery callbacks, opt-out, and cost controls |
+| PIN, biometric, and 2FA | MVP | Optional per-browser app lock with PIN and supported platform WebAuthn verification; account-wide TOTP enrollment, login challenge, recovery codes, and removal |
+| End-to-end or field-level encryption | MVP | Field-level encryption for the sensitive inventory below; protected database/object storage/backups and documented key rotation |
+| Secure session and device management | MVP | View active sessions and registered browsers, revoke current/other/all sessions, remove unlock credentials, enforce recent authentication |
+| Data export and account deletion | MVP | Complete account data archive and a resumable account erasure workflow covering all owned workspaces, files, caches, and jobs |
+| Regular backups and cloud sync | MVP | Automated daily backups, off-host retention, tested restores, and authenticated online synchronization across devices |
+| Privacy mode | MVP | One consistent hide-amounts control across every financial screen and accessible representation |
+| Read-only bank connections | V2 | Read-only aggregator consent, encrypted provider tokens, revocation, and import provenance |
+| Audit logs for business accounts | V2 | Searchable, authorized business audit history extending existing audit records |
+| GDPR, local data protection laws, and PCI where applicable | V2 | Formal applicability review and compliance operations; basic privacy/security obligations still apply at MVP launch |
 
-### Resolve differences from the PRD explicitly
+### 2.1 Decisions to use during implementation
 
-- The PRD places basic push/email reminders and notification preferences in P0. They already exist in this repository. Preserve their controls, consent, and behavior in MVP; V2 expands them into a unified channel configuration screen for every new event type. Do not remove working channels to match the phase labels.
-- The PRD places broad anomaly/duplicate detection in a later release. This request makes **unusual spending** MVP. Implement the limited deterministic detector below now. Fraud classification, duplicate-payment detection, machine learning, and subscription detection remain outside this issue.
-- MVP must deliver every new event type in-app. Existing bill and assistant email/push delivery remains supported and must pass regression checks. New event types use in-app delivery by default; do not silently subscribe users to external delivery.
-- “Payment due” means an existing bill occurrence or scheduled outgoing recurring payment. Do not invent an accounts-payable, debt, credit-card statement, or payment-processing system for this issue. Add adapters when those domain features exist.
-- Invoice reminders in this issue notify the workspace owner about money owed to the business. Emailing a customer continues through the existing invoice reminder preview and explicit confirmation workflow.
-- MVP recipients are workspace owners, matching current finance reminder behavior. Assistant-derived notifications retain their existing actor scope. Do not introduce sharing, member invitation, or new roles in this issue.
+1. **Choose field-level encryption for MVP.** The API must calculate forecasts, reports, and reminders. Authorized server processes will decrypt selected fields. Do not describe this as end-to-end encryption or claim that the operator cannot read data. A future E2EE design would require different search, recovery, collaboration, and server computation behavior.
+2. **Keep Better Auth as the identity/session authority.** Use its TOTP plugin. Keep signup verification OTP separate from the second factor.
+3. **Treat the app PIN as an unlock credential for an existing authenticated session.** It cannot sign into an account, satisfy TOTP, authorize deletion/export, or reset account security.
+4. **Use WebAuthn platform user verification for PWA biometric unlock.** The OS may use a fingerprint, face, or device PIN; the web app cannot guarantee a biometric was used and must not collect biometric templates. Present “Use device security,” explaining the possible OS prompts. Unsupported browsers get the PIN/full-login fallback. [WebAuthn reference](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API)
+5. **Make biometric unlock a separate, session-bound WebAuthn ceremony using a maintained verifier.** Recommended: `@simplewebauthn/server` and its browser client after a Bun compatibility check. Do not enable passwordless sign-in as a shortcut to unlocking: it could introduce a path around TOTP. Reuse these credential records if full passkey sign-in is added later; do not create two credential stores. [Verifier documentation](https://simplewebauthn.dev/docs/packages/server)
+6. **Online cloud sync is MVP.** PostgreSQL and private object storage are the source of truth. After a successful write, other signed-in devices refresh through existing authenticated APIs. Offline financial editing and a persistent offline replica are a separate synchronization project; the PWA must clearly show when it is offline and cannot save.
+7. **Proposed engineering defaults:** 6–8 digit PIN; idle lock after 5 minutes; maximum unlock lease 15 minutes; immediate concealment on backgrounding; recent full authentication within 5 minutes for sensitive actions; challenge expiry 5 minutes; export download availability 24 hours; daily backups with a 24-hour RPO and 4-hour RTO. These are product/operational defaults, not statutory deadlines.
+8. **MVP deletion covers the current ownership model:** one personal workspace and zero or more solely owned businesses. If a future/shared membership or unresolved retention hold exists, identify it in the preview and stop before acceptance; never silently erase another member's records.
 
-## 3. Existing implementation to reuse
+## 3. Existing implementation to reuse and gaps to close
 
-| Existing area | Files / tables | Required approach |
+Repository inspection baseline: 2026-10-01. Recheck these paths when implementing; do not assume earlier issue completion means this security issue is done.
+
+| Existing area | Observed baseline | Required work |
 |---|---|---|
-| In-app inbox and read state | `finance_notifications`; `personal-finance/routes.ts`; `(app)/+layout.svelte` | Extend the existing records and APIs; keep existing IDs and read state |
-| Bill scheduler | `personal-finance/reminder-scheduler.ts`; `bills`, `bill_occurrences` | Extract reusable evaluation logic, add overdue handling and durable delivery tracking |
-| Budget alerts | `tracking/routes.ts`; `budgets`, budget periods and revisions | Reuse money/category semantics; move notification evaluation into shared logic and cover all mutations |
-| Email/push choices | `finance_notification_preferences`; `push_subscriptions`; bills UI | Preserve opt-outs and encrypted push credentials; keep old preference payloads compatible during migration |
-| Email transport | `email/queue.ts`, `email/worker.ts`, mailer and encryption modules | Reuse BullMQ and SMTP; use local Mailpit for acceptance checks |
-| Browser push | `apps/web/static/push-worker.js`; push registration routes | Extend existing service worker integration rather than registering a competing worker |
-| Forecast alerts | `assistant/suggestions.ts`, forecast/settings/refresh code | Reuse existing projected alerts, evidence, source freshness, consent, dismiss/snooze behavior |
-| Invoice follow-up | `business/routes.ts`, `business/worker.ts`, `invoice_deliveries` | Preserve the existing customer-send confirmation and delivery records |
-| Workspace isolation | Current scoped API helpers and RLS policies | Enforce both workspace membership and recipient identity |
+| `apps/api/src/auth.ts` | Better Auth email/password, hashed verification OTPs, password reset with session revocation, 7-day sessions; cookie cache disabled; only `emailOTP` plugin configured | Add TOTP lifecycle and recovery; enforce freshness and pending-deletion state on all authentication paths |
+| `apps/web/src/lib/auth-client.ts` and auth pages | Svelte client with email OTP and 429 feedback | Add second-factor challenge, security settings, and unlock UI without full-page locale changes |
+| `apps/api/src/db/schema.ts` | `user`, `session`, auth `account`, `verification`, workspaces/memberships; financial tables and `audit_logs` | Reuse these tables; add security/privacy job state and plugin schema through reviewed migrations |
+| `apps/api/src/auth/rate-limit.ts`, `apps/api/src/app.ts` | Redis auth limiter plus Better Auth memory limiter; trusted proxy handling | Add factor/PIN/challenge limits, coordinate duplicate limiter behavior, preserve trusted-IP rules |
+| `apps/api/src/email/{crypto,queue,processor}.ts` | Encrypted queued email and durable delivery checks | Preserve existing job compatibility; add deletion/fencing checks and versioned key handling |
+| `apps/api/src/personal-finance/push-crypto.ts` | AES-GCM push secret encryption currently shares `EMAIL_JOB_ENCRYPTION_KEY` | Separate purposes/keys and support migration/rotation without breaking existing subscriptions |
+| `apps/api/src/tracking/storage.ts`, business and report storage paths | S3-compatible private application files; local Compose uses SeaweedFS | Verify object access controls, encryption configuration, backups, cleanup, and signed-link exposure |
+| `apps/api/src/assistant/routes.ts` | Assistant-only export and assistant-data deletion | Keep those controls; add full account export/deletion covering finance, identity, files, and derived data |
+| `apps/api/src/reports/` | Report exports and cleanup job patterns | Reuse bounded job/lease/cleanup patterns, not report-specific schemas as a complete privacy export |
+| `apps/web/src/lib/privacy.ts` | Local hide-amounts preference, shared event and legacy reports key | Extend to all screens, charts, tooltips, accessibility labels, SSR/hydration, and tabs |
+| `apps/web/vite.config.ts`, `apps/web/static/push-worker.js` | PWA configuration and push; a navigation denylist is not a full cache policy | Audit every authenticated route, API response, Cache Storage entry, and offline fallback |
+| `docker-compose.yml` | PostgreSQL 18 data mounted at `/var/lib/postgresql`, Redis AOF, Mailpit, SeaweedFS volume; no scheduled backup service | Add backup schedule, off-host artifacts and restore drill; do not treat volumes or Redis AOF as a backup |
+| `apps/api/src/db/cleanup-expired-auth.ts` | Batched expiry cleanup for sessions/verifications | Schedule it and include challenge, security-state, export, and privacy artifact cleanup |
 
-Observed gaps to address:
+Important distinctions: auth `account` stores login-provider credentials; financial `accounts` stores wallets. `audit_logs` already contains financial before/after snapshots. Those snapshots and `idempotency_keys.response_body` can duplicate sensitive plaintext and belong in the encryption/deletion inventory.
 
-- The inbox currently returns at most 100 active notices; counting those rows is not a reliable total unread count.
-- Some bill scheduling paths set `email_sent_at` when a job is queued. Queue acceptance does not mean SMTP accepted the email.
-- Push delivery is aggregated into one timestamp, which cannot describe partial success across several devices.
-- Bill reminder copy has hard-coded English paths. New notifications need structured message keys and EN/ID rendering.
-- Existing budget and assistant producers must not run alongside replacement producers and create duplicate alerts.
+## 4. Security behavior and policy
 
-## 4. Behavioral rules: implement these before the UI
+### 4.1 Authentication, unlocking, and recent verification
 
-### 4.1 Shared rules
+Implement three explicit states: unauthenticated; authenticated but app-locked; authenticated and unlocked. TOTP-pending login is unauthenticated for all finance APIs.
 
-- Store money as the repository's `NUMERIC(19,4)`/decimal strings; use its integer-unit helpers for comparisons. Never compare money using JavaScript floating point.
-- Compare amounts only within one currency. Show the source currency; never silently convert or sum different currencies.
-- Use workspace-local calendar dates for due dates and budget periods. Store worker execution instants as UTC `timestamptz`. Inject a clock into evaluators for deterministic tests.
-- A reminder is informational. Reading, dismissing, or snoozing it must not post a transaction, mark an invoice paid, or move money.
-- Read, dismissed, snoozed, resolved, and expired have different meanings. Reading changes the unread count; resolving means the financial condition no longer applies.
-- Notification settings control these alerts independently of external AI. Recorded-balance and deterministic spending alerts work without an LLM. Assistant-derived projected alerts must still honor assistant data scopes, consent versions, and opt-outs.
-- A worker must recheck membership, current source state, expiry, recipient verification, and channel preference immediately before external delivery.
+- TOTP enrollment requires recent full authentication, a locally rendered QR code, and a valid first authenticator code before enabling the factor. Never send the QR secret to an external image service.
+- Use Better Auth's supported server/client plugin APIs and generated schema for the installed version. The lockfile currently resolves Better Auth 1.7.6; verify compatibility rather than copying examples from a different release.
+- Better Auth's default TOTP challenge does not cover every non-password sign-in method. Test every enabled method and hook. For MVP keep existing email/password sign-in plus TOTP; do not accidentally add OAuth/passkey bypasses. [Better Auth TOTP documentation](https://better-auth.com/docs/plugins/2fa)
+- Recovery codes are high-entropy, single use, consumed atomically, and displayed only through a protected flow. Use the plugin's supported secure storage option; inspect its actual storage behavior. Do not replace it with plaintext or silently break its verification adapter.
+- TOTP secrets must be recoverable by the verifier and therefore encrypted, not irreversibly hashed. App PINs and account passwords must be salted password hashes, never decryptable fields. Use a maintained Argon2id implementation for new PIN hashes, with a separate server pepper and benchmarked parameters; keep existing Better Auth password hashes compatible. [Password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+- Verify/reject replayed TOTP time steps and simultaneous recovery-code use; determine whether the plugin supplies this behavior. If additional replay state is needed, keep it in the same atomic verification flow.
+- Proposed PIN policy: five failures cause a 15-minute device/user cooldown; ten consecutive failures disable quick unlock until full login. Enforce counts across processes, by both account/device and trusted source IP. No browser refresh, new challenge, or Redis restart may reset a durable lockout.
+- Forgotten PIN: full login with the enabled second factor, then reset the PIN. Lost authenticator: recovery code. Do not implement an email-only reset that silently removes MFA; show a clear recovery/support path if all factors are lost.
+- Disabling TOTP, regenerating recovery codes, registering/removing unlock credentials, changing password/email, exporting, deleting the account, and revoking all other devices require recent full authentication. A PIN unlock never supplies that proof. A login timestamp or ordinary session refresh is not proof of recent password/factor verification.
+- Issue a short-lived, purpose-bound, one-use step-up grant after verification. Bind it to user, current session, security version, and intended operation. Consume it atomically with the operation; reject reuse for a different action.
+- Disable trusted-device MFA bypass for the initial release. If later enabled, document its lifetime and revocation semantics separately from app unlock.
 
-### 4.2 Bill, invoice, and outgoing payment reminders
+### 4.2 App lock and device boundary
 
-1. Reuse bill `reminder_days` (currently defaults to `[3, 0]`). Use the same default for invoice and outgoing recurring-payment rules unless changed by the user.
-2. Proposed MVP schedule: evaluate every minute; release date-based reminders at 09:00 workspace time, with one additional overdue stage on the day after the due date. Lead days are configurable integers from 0 to 90; overdue is a separate stage, not a negative lead day.
-3. After downtime, create at most one current applicable stage per source, choosing overdue over due-today over lead-time. Catch up only the preceding seven local days, then record skipped/expired stages so old records do not create an alert flood.
-4. Only unpaid, enabled, non-archived bill occurrences are eligible. Paid/skipped/deleted occurrences resolve their active alerts and cancel pending delivery.
-5. Only issued/sent or partially paid invoices with a positive outstanding balance are eligible. Calculate outstanding from the existing invoice/payment logic; never alert on drafts, paid, or void invoices. Include the remaining amount after partial payment.
-6. For outgoing recurring payments, derive the occurrence date from the existing recurrence engine. Match generated/paid occurrences using existing occurrence identity. If a bill already references that recurring rule, use the bill reminder and suppress the second payment reminder. Income and transfers do not create outgoing-payment alerts.
-7. Dedupe identity: workspace + recipient + source type + source ID/occurrence + effective due date + reminder stage. An amount-only change updates evidence without creating another due reminder. A changed due date cancels old pending stages and schedules the new date.
-8. During migration, do not send historical reminders again. Seed a cutover watermark; apply the bounded catch-up policy only after the new scheduler is active.
+Use an opaque, random browser registration cookie and server-side session association. A device name/user agent is a display hint, not identity. Do not fingerprint hardware or infer trust from an IP address.
 
-### 4.3 Budget thresholds
+- Enabling PIN or biometric unlock requires a valid full session and recent verification. Store the PIN hash per registered browser/user pair.
+- The financial API guard reads the session's bound device and lock state from the server. Clearing localStorage or the browser registration cookie must not convert an existing locked session to an unlocked one.
+- Idle checks happen server-side. Background polling cannot extend the unlock lease; successful PIN/WebAuthn verification may renew it. The 15-minute maximum lease bounds renewal based on ordinary activity.
+- On hide/background/manual lock, immediately remove financial content, stop polling, discard sensitive client state, and request server lock. Lock all tabs sharing that session; sync concealment through `BroadcastChannel` or storage events without transmitting financial data or credentials.
+- Before rendering after resume, navigation, or reload, obtain lock status and only then load protected data. The guard must cover API routes, SSR loaders, file/PDF downloads, assistant endpoints, export status/downloads, and business routes. A Svelte overlay alone is insufficient.
+- Allow only a small explicit set of routes while locked: minimal lock status, rate-limited unlock, full reauthentication, logout, and public health/static assets. Security mutations still require step-up.
+- WebAuthn assertions must validate the exact expected challenge, RP ID, origin, user verification, credential owner, current session/device, expiry, and purpose. Consume challenges once; update counters atomically using the library's semantics for synced credentials. Use HTTPS in deployed environments and an explicit development localhost configuration.
+- No fake “biometric success” buttons or automatic PIN submission. Handle cancellation, unavailable authenticator, revoked credential, and unsupported browser with an accessible fallback.
+- This web lock reduces exposure on an unattended browser. It cannot protect against a compromised OS, malicious extensions, or code executing inside the authenticated origin. Do not advertise native secure-hardware/offline-vault guarantees.
 
-- Reuse the budget's configured thresholds, default `[80, 100]`, including existing validation. Use the same category/subcategory, currency, date, deletion, and revision rules as the budget screen.
-- Trigger at `spentUnits * 100 >= budgetUnits * thresholdPercent` for a positive planned amount. For a zero budget, any positive spend yields a dedicated “spending against a zero budget” event; do not divide by zero.
-- Evaluate after transaction create/edit/delete/restore, category/account/date changes, budget edits, and period rollover. Editing a transaction across categories or periods invalidates both old and new scopes.
-- Emit each threshold once per budget period and recipient. If one edit crosses 80% and 100%, display the highest threshold and record both as reached to avoid two simultaneous notices.
-- A refund, deletion, or budget increase can resolve an alert. Preserve the threshold's emitted marker until the period ends so repeated edits do not spam the user. Explain this behavior in settings.
-- Include planned, spent, remaining, currency, category, threshold, and period boundaries in the evidence. Link to the existing budget screen.
+### 4.3 Session and device management
 
-### 4.4 Recorded low balance and projected shortfalls
+Reuse Better Auth's authoritative sessions and revocation behavior. Build a server adapter that returns safe IDs/labels, creation/expiry/last activity and a current-session marker. Do not expose reusable session tokens through a general device-list response. [Session APIs](https://better-auth.com/docs/concepts/session-management)
 
-- For each enabled account rule, calculate the recorded balance from the existing effective-dated ledger. Do not derive balance by summing only expense transactions.
-- MVP recorded-balance rules apply to cash, bank, e-wallet, and savings accounts. Credit cards and investments need different semantics and are not treated as liquid cash.
-- Thresholds are explicit account-currency decimal values configured by the user. A new account rule is disabled until configured; zero is a valid threshold that warns only when negative.
-- Trigger when balance is strictly below the threshold. Create one notification per below-threshold episode. Rearm after balance reaches threshold plus 5% of its absolute value; for a zero threshold, rearm at zero. Compute this hysteresis in integer units.
-- Transfers, opening-balance changes, reversals, backdated entries, and account archival must invalidate the affected evaluations. Future-dated entries must not change today's recorded-balance alert.
-- Keep current and projected balances clearly labeled. Reuse assistant forecast alerts for future dates; do not rerun a second forecast or relabel its estimate as actual cash.
-- Suppress overlapping projected low-balance notices for an already-below-threshold account when they convey the same condition; preserve distinct future shortfall information. Do not disable assistant consent checks to accomplish this.
+- Separate “sign out this session,” “sign out other sessions,” and “remove this browser and its unlock credentials.” Revoking one session must not unexpectedly remove every credential; removing a browser must revoke all its linked sessions and push endpoints.
+- Verify ownership before looking up the internal token needed by library revocation APIs. Never accept a caller-supplied user ID or session token for arbitrary revocation.
+- Password reset, credential recovery, and security-setting changes invalidate affected sessions/unlock grants. Keep cookie caching disabled unless revocation remains immediate and is demonstrated.
+- Finance requests and background jobs check `account_status` and a monotonic security/deletion generation. CORS alone is not CSRF protection: protect cookie-authenticated mutations with trusted Origin/CSRF checks, including custom security routes.
+- Production cookies remain Secure, HttpOnly, SameSite; reject untrusted forwarded IP headers and mismatched origins. Use TLS and separate migration, API, worker, and backup database roles. The API role must not own tables or have `BYPASSRLS`.
+- Record small security events with IDs, action, outcome, timestamp, and coarse device context. Do not log PINs, passwords, cookies, codes, QR URIs, decrypted fields, or exported contents.
 
-### 4.5 Unusual spending: bounded MVP detector
+## 5. Data protection and encryption inventory
 
-Use a deterministic rule, proposed version `unusual-expense-v1`, rather than an LLM:
+Create a reviewed inventory before changing schema: field, owner, current readers/writers, duplicates, required search behavior, new representation, retention, and migration state. Do not encrypt an indexed search field without planning its readers.
 
-1. Evaluate new or edited, non-deleted positive expense transactions. Ignore income, transfers, opening entries, and reversed/deleted records according to existing domain semantics.
-2. Compare within the same workspace, currency, and exact category (uncategorized is its own group). The baseline is the preceding 90 calendar days, excluding the candidate and its date. Do not use later transactions when evaluating a backdated item.
-3. Require at least 10 eligible baseline transactions spanning at least four dates. Otherwise record `insufficient_history` and produce no unusual-spending alert.
-4. Calculate median and median absolute deviation (MAD) in integer units; for even counts use the integer midpoint rounded down. Flag only when the expense is strictly greater than all of: `3 × median`, `median + 6 × MAD`, and a user-configured minimum amount in that currency. The minimum must be set before the rule is enabled. These are initial product heuristics, not validated fraud predictions.
-5. Save sample count, window, median, MAD, comparison threshold, candidate amount, currency, and rule version as structured evidence. Example copy: “This expense is higher than your usual Food spending. Review the transaction.” Never call it confirmed fraud.
-6. Dedupe by recipient + transaction ID + rule family. Edits update or resolve the existing item rather than generating a new notification every time. Preserve dismissal; only an explicit user reset should undo it.
-7. Changes to historical expenses can affect later baselines. Mark the affected category/currency/date ranges dirty and reevaluate in bounded batches; do not synchronously rescan an entire workspace on every write. After a full historical recomputation, resolve stale alerts and apply the catch-up policy to new ones.
-
-## 5. Suggested tables and schema changes
-
-Prefer extending existing tables. The MVP proposal needs **three new tables** plus additive changes to existing notification tables. Do not duplicate invoices, payments, bills, budgets, goals, accounts, or forecast data.
-
-### 5.1 Extend `finance_notifications` — durable user-visible inbox
-
-Keep current IDs, `workspace_id`, `user_id`, `kind`, `source_id`, `dedupe_key`, title/message, read state, assistant reference, and timestamps.
-
-Add:
-
-- `source_type text`, `source_revision text`, `rule_version text` for source identity and freshness.
-- `message_key text`, `message_params jsonb`, `evidence jsonb` with validated, size-limited schemas. Decimal amounts inside JSON remain strings.
-- `severity text` constrained to `info | attention | urgent`; seriousness must reflect evidence.
-- `action_type text` and validated source IDs for safe internal navigation. Do not store an arbitrary caller-provided URL.
-- `dismissed_at`, `snoozed_until`, `expires_at`, `updated_at` as appropriate timestamps. Keep existing `resolved_at` and add `resolution_reason`.
-- Unique `(workspace_id, user_id, id)` to support scoped composite child foreign keys. Retain existing unique `(workspace_id, user_id, dedupe_key)`.
-- Index `(workspace_id, user_id, created_at DESC, id DESC)`; add an active-unread partial index over unread, unresolved, undismissed records. Evaluate snooze/expiry against the current time in the query, not a volatile index predicate.
-
-`source_id` is currently a non-null UUID. Every new producer must supply a real domain UUID; a recurring occurrence may use its rule UUID plus occurrence date in the dedupe key/evidence. Polymorphic source references require type-specific scoped validation; a UUID alone does not prove ownership. Use typed foreign keys where feasible and explicitly resolve or delete dependent notifications when sources are removed.
-
-Keep title/message as legacy fallback during migration. New UI renders translated message keys. Retain legacy sent timestamps for compatibility, but new delivery rows become authoritative for transport state.
-
-### 5.2 Extend `finance_notification_preferences` — existing user choices
-
-- Preserve key `(workspace_id, user_id, event_type, channel)` and all existing opt-outs.
-- Add `in_app` to the constrained channel list; allow the canonical new event types.
-- Add a monotonic `version` and retain `updated_at` so pending deliveries can detect changes.
-- MVP: new types default to in-app enabled and external channels disabled; preserve current bill/assistant defaults for existing types. Disabling a type suppresses its pending deliveries and hides or resolves active items with a preference-disabled reason.
-- V2: add validated quiet-hour start/end and timezone, or a separate single row of delivery settings per recipient if repeating them per event would be confusing. All-day mute is an explicit state; midnight-crossing intervals must work.
-- Keep old bill/assistant preference fields as an API adapter until their callers migrate. Map old and new fields to the same rows; never maintain two preference stores.
-
-### 5.3 Add `finance_notification_rules` — user-configured detector settings
-
-Suggested columns:
-
-`id uuid`, `workspace_id uuid`, `user_id text`, `rule_type text`, `scope_key text`, `account_id uuid NULL`, `category_id uuid NULL`, `currency varchar(3) NULL`, `enabled boolean`, `parameters jsonb`, `version integer`, `created_at`, `updated_at`.
-
-- Unique `(workspace_id, user_id, rule_type, scope_key)`; `scope_key` is required and canonical, such as `account:<uuid>` or `category:<uuid>:IDR`.
-- Use composite workspace/source foreign keys for account/category references and validate that the scope matches `rule_type`.
-- Parameters have a strict per-type schema: account threshold; unusual-spending minimum; invoice/payment lead days and local reminder time. Store amounts as decimal strings with database validation where possible.
-- Keep budget thresholds on `budgets.alert_thresholds` and bill lead days on `bills.reminder_days`; do not create a second editable source for those values.
-- Existing assistant account policy thresholds remain authoritative for projected alerts. Recorded-balance rules here are separate and explicitly labeled.
-
-### 5.4 Add `finance_notification_evaluation_state` — dedupe and durable recovery
-
-Suggested columns:
-
-`id uuid`, `workspace_id`, `user_id`, `rule_key text`, `scope_key text`, `period_key text NOT NULL`, `rule_version`, `source_version`, `dirty_version bigint`, `processed_version bigint`, `cursor jsonb`, `state jsonb`, `next_evaluation_at`, `lease_expires_at`, `attempts`, `last_error_code`, `updated_at`.
-
-- Unique `(workspace_id, user_id, rule_key, scope_key, period_key)`. Use a canonical non-null period/episode key; avoid uniqueness defeated by NULL values.
-- Store threshold emission markers, low-balance episode state, rule-specific scan cursors, and the migration cutover watermark here. Use small validated state objects, not copies of every transaction.
-- Index due work by `next_evaluation_at` and lease expiry. Dirty versions are incremented in the same transaction as source mutations.
-- Worker claims a bounded batch, evaluates a coherent source snapshot, inserts/updates notices, and advances `processed_version` atomically. If source/dirty version changed during evaluation, retain pending work; never clear a newer invalidation.
-- Recover expired leases and retain emission markers longer than inbox display retention to prevent old alerts from reappearing after cleanup.
-
-### 5.5 Add `finance_notification_deliveries` — transport outbox and results
-
-Suggested columns:
-
-`id uuid`, `workspace_id`, `user_id`, `notification_id uuid`, `channel text`, `destination_key text NOT NULL`, `push_subscription_id uuid NULL`, `generation integer`, `preference_version integer`, `status text`, `attempts integer`, `available_at`, `expires_at`, `lease_expires_at`, `send_started_at`, `provider_message_id text NULL`, `last_error_code text NULL`, `accepted_at`, `delivered_at`, `created_at`, `updated_at`.
-
-- Composite foreign key `(workspace_id, user_id, notification_id)` references the scoped notification key with cascade deletion. Push subscription references must also match workspace and recipient.
-- Unique `(workspace_id, user_id, notification_id, channel, destination_key, generation)`. Use `email:<userId>` or `push:<subscriptionId>`; no raw email address or push secret in the dedupe key. One push row per subscribed device.
-- Constrain status to `pending | processing | accepted | delivered | retryable | failed | cancelled | expired | unknown`. In-app persistence needs no SMTP delivery row.
-- Index `(status, available_at)` and active lease expiry. Enforce nonnegative attempts and valid timestamp/state transitions.
-- Insert outbox rows in the same database transaction as notifications. BullMQ carries delivery IDs and acts as a wakeup mechanism; periodic database recovery handles lost Redis jobs.
-- SMTP acceptance sets `accepted_at`, not proof of mailbox delivery. Set `delivered_at` only from a reliable provider receipt. Record ambiguous outcomes as `unknown`, without a blind automatic resend.
-- Persist `send_started_at` before calling the provider. After a crash, recover expired leases with no send attempt normally; reconcile a started send through provider idempotency/receipts when available, otherwise mark it unknown. A lease timeout alone is not proof the provider did not accept the message.
-- New generation is only for an explicit retry or a genuinely new reminder occurrence. A normal preference save or scheduler tick must not increment it and resend old messages.
-
-### 5.6 Existing tables to retain; later tables
-
-| Table | Phase / purpose |
+| Data | MVP treatment |
 |---|---|
-| `push_subscriptions` | Reuse now; V2 can add device label, last success/failure, revoked timestamp. Keep encrypted secrets and per-workspace ownership |
-| `bills`, `bill_occurrences`, recurring rule/occurrence tables | Canonical obligation and payment source; no new generic payments table |
-| `budgets`, budget periods/revisions, categories, transactions | Canonical budget and spending sources |
-| accounts and journal tables | Canonical recorded balances |
-| invoices, payments, `invoice_deliveries` | Invoice outstanding amount and confirmed customer reminder delivery |
-| assistant settings/policies, forecast runs, suggestions | Existing consent-aware projected warnings |
-| savings goals and contributions | V2 milestone source; reuse evaluation state to record 25/50/75/100% markers |
-| `notification_contact_points` | Advanced only: verified phone/channel destinations, encrypted values, consent/verification/revocation timestamps |
-| `notification_provider_events` | Advanced only: unique provider callback IDs, delivery reference, status, received time; minimal retained payload |
+| Passwords and app PINs | Salted password hashes; new PIN pepper held outside the database; no reversible encryption |
+| TOTP secret and recovery material | Plugin-compatible encrypted secret and secure recovery-code storage; explicit key/version compatibility |
+| OAuth access/refresh/ID tokens in auth `account` | Protect existing non-null secrets through a supported adapter/plugin mechanism; no double encryption that breaks Better Auth; no new OAuth feature required |
+| Push subscription secret and queued email payload | Preserve existing encryption; introduce independent purpose keys, version tags, AAD, rotation, and legacy readers |
+| `business_profiles.tax_id`, address/contact bundle | Encrypted protected bundle; expose decrypted values only to authorized business screens and invoice generation |
+| Invoice seller/recipient snapshots, recipient delivery snapshot, payment instructions/reference | Encrypt protected contact/tax/payment details, including immutable issued snapshots; preserve invoice version and financial totals |
+| Account/bank identifiers | Do not add collection solely for this issue. Encrypt identifiers wherever present; store only needed display fragments. A wallet's “credit card” label does not justify collecting card credentials |
+| Transaction notes/merchant and other ordinary finance content | Covered by database/storage encryption at rest and normal authorization. Treat as private data; do not promise every column is individually encrypted. Inventory users placing identifiers in free text and minimize propagation |
+| `audit_logs.before/after`, idempotency responses, forecast/report snapshots, notification evidence, invoice/reminder copies | Remove unnecessary protected values or encrypt their nested protected payload. Prevent plaintext copies of fields chosen for field encryption |
+| Receipts, attachments, logos, invoice PDFs, report/privacy archives | Private objects, authenticated downloads, verified storage encryption at rest; encrypted backup copies. PDFs may intentionally contain authorized recipient details |
+| Financial amounts, dates, currency, ledger relationships | Preserve `NUMERIC` and authorized SQL calculations; never convert to floating point or encrypt amounts in a way that silently breaks totals |
 
-### 5.7 Isolation, retention, and migration rules
+Use a versioned authenticated encryption envelope such as `{version, keyId, algorithm, nonce, ciphertext, tag}`. Recommended algorithm: AES-256-GCM through a maintained implementation, a fresh 96-bit nonce per encryption, and authenticated associated data binding purpose, user/workspace, entity ID, and field name. Moving ciphertext to another tenant/field must fail authentication. Missing keys and tampered data fail closed, with a safe error rather than a plaintext fallback. [Cryptographic storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)
 
-- All new recipient tables require `workspace_id` and `user_id`, membership checks, RLS `USING` and `WITH CHECK`, and appropriate composite keys. A worker must use a deliberately scoped internal path; request clients cannot select another recipient.
-- Apply additive migrations with the next available sequence number. Backfill source types/message fallbacks safely, then add stricter constraints after invalid legacy rows are handled.
-- Do not rewrite immutable applied migrations, delete existing notices, reset read state, replay old emails, or reset preferences.
-- Old bill `email_sent_at` values may indicate queued rather than sent. Preserve them as legacy/unknown delivery evidence and do not automatically resend them. Classify old email/push jobs at cutover and allow existing auth email queues to continue normally.
-- Proposed retention defaults: resolved/expired/dismissed inbox content 90 days, terminal delivery metadata 30 days, closed-period dedupe markers 400 days. Never purge active alerts merely because they are old; reevaluate their sources first. Make defaults configurable and document them as product choices.
-- Keep active episode state and V2 goal milestone markers for the lifetime of their source. Retention must not rearm a low-balance episode or repeat a goal celebration.
-- Prevent historical resurrection using scheduler cutover/catch-up limits even after dedupe markers expire. Account/workspace deletion must remove derived content, cancel pending deliveries, and invalidate device access.
-- Logs contain event kind, delivery ID, status, attempts, timing, and sanitized error code. Never log OTPs, tokens, push credentials, full destinations, or full financial evidence.
+Keep the active write key and historical read keys in an external secret manager/KMS in production. Development uses separately generated secrets outside Git. Key IDs and KMS references are metadata; never store unwrapped encryption keys in the same database they protect. Separate auth, field, email, push, PIN-pepper, and backup purposes. Define rotation, recovery, access, and retirement procedures, including which historical keys each retained backup needs. [Key management guidance](https://cheatsheetseries.owasp.org/cheatsheets/Key_Management_Cheat_Sheet.html)
 
-## 6. Proposed API and UI contract
+Migration sequence: add nullable protected columns/envelopes → deploy version-aware readers and encrypted new writes → backfill in bounded batches → compare authorized decrypted values and financial outputs → remove plaintext duplicates and fallback paths → retire obsolete readers/keys only after backup retention permits. During the transition, document where plaintext still exists. Do not mark encryption complete while a live duplicate remains unprotected.
 
-Extend the existing workspace notification routes; register each path once. Use Better Auth, existing scoped helpers, Elysia validation, and typed client conventions.
+At-rest infrastructure encryption is a separate deliverable: verify PostgreSQL host volume, S3 provider/storage volume, Redis persistence where sensitive metadata exists, and backup destination encryption. An HTTPS S3 endpoint or an arbitrary `ServerSideEncryption` request does not prove the local SeaweedFS service encrypts its disk. Choose supported storage encryption or encrypted host volumes and record evidence for the actual deployment.
 
-| Method and workspace-relative path | Purpose |
+## 6. Required and suggested tables
+
+Use the existing Drizzle schema and additive migrations after the repository's latest migration. Do not edit already-applied migrations or create a second users/sessions model. Names below are proposed application names; plugin-owned names must match the installed plugin's generated schema.
+
+### 6.1 Extend existing tables
+
+| Table | Proposed changes | Purpose and constraints |
+|---|---|---|
+| `user` | Plugin `twoFactorEnabled` field; `account_status` (`active`, `deletion_pending`), `security_version` integer, deletion-request timestamp | One account lifecycle source. Defaults keep existing accounts active and factors disabled until verified |
+| `session` | Retain Better Auth fields and lifecycle | Do not change token storage/adapter semantics casually; use companion security state below |
+| Auth `account`, business/invoice/delivery snapshot tables | Protected fields/envelopes from §5 | Preserve provider compatibility and immutable invoice meanings; never create plaintext backup columns as the final design |
+| `push_subscriptions` | Nullable `device_registration_id` with scoped ownership constraint | Enables per-browser removal; migrate legacy subscriptions without claiming their device is known |
+| `audit_logs` | Protect/minimize sensitive before/after fields as needed | Keep current financial audit evidence; business audit UI is V2 |
+| `attachments`, `business_documents`, `report_exports` | Reuse object keys, checksums and lifecycle; add encryption/key metadata only where needed | Reuse file cleanup machinery and track object versions when storage versioning is enabled |
+
+### 6.2 New MVP tables
+
+| Table | Essential fields | Purpose / indexes / ownership |
+|---|---|---|
+| Plugin `two_factor` | Generated ID, user FK, encrypted secret, secure backup-code representation and plugin-required fields | Follow actual plugin schema; index user lookup. Add accepted TOTP time-step state only if required for replay protection |
+| `user_security_settings` | `user_id` PK/FK, `privacy_mode_default`, `default_auto_lock_seconds`, `version`, timestamps | Account defaults only; unlocking state belongs to a session. Optimistic version checks |
+| `device_registrations` | UUID, user FK, digest of random registration token, label, coarse browser info, optional PIN hash/pepper version, lock-enabled flag, failed count, cooldown, created/last seen/revoked timestamps | No raw browser secret or hardware fingerprint. Unique token digest; `(user_id,id)` unique; user/last-seen index |
+| `session_security_state` | Session PK/FK, user FK, device FK, `locked_at`, `unlocked_until`, `last_activity_at`, `last_full_auth_at`, `mfa_verified_at`, `security_version` | Server lock/freshness state. Composite owner constraints prevent linking a foreign session/device. Expired/revoked session cascades this state |
+| `webauthn_credentials` | UUID, user/device FKs, unique credential ID, public key, WebAuthn user handle, signature counter, transports, backup/device-type flags, label, created/last-used/revoked timestamps | Public keys only; no biometric templates/private keys. Use the maintained library's recommended binary/base64 representation and counter semantics |
+| `security_challenges` | UUID, user/session/device FKs as applicable, type/purpose, random challenge or digest, credential restriction, security version, expiry, consumed timestamp, attempt count | WebAuthn ceremony state and purpose-bound step-up grants. Unique opaque ID, expiry index; consume with a conditional update/lock. Plugin TOTP pending state remains plugin-owned |
+| `security_events` | UUID, nullable user/session/device references, event type, outcome, request ID, minimized metadata, created/expiry timestamps | Security operations and recovery evidence. Actor/time and expiry indexes. No generic arbitrary request-body logging |
+| `privacy_exports` | UUID, user FK, format/schema version, state, requested/snapshot/completed/expiry times, job lease/attempts, object key/version, checksum, byte count, safe error, security generation, idempotency key | Unique `(user_id,idempotency_key)`; user/time and state/lease indexes. No archive plaintext in PostgreSQL/Redis |
+| `account_deletion_requests` | UUID, nullable user reference plus opaque original subject ID, state, scope manifest/version, confirmed/start/completed times, progress checkpoint, lease/attempts, retention disposition, safe error | Survives user removal long enough to finish cleanup. Partial unique index for one active request per subject; encrypted/minimized scope manifest |
+| `privacy_cleanup_tasks` | UUID, deletion/export request FK, kind, opaque object key/version or external resource locator, state, attempts, next attempt, lease, completion/error timestamps | Durable bounded cleanup after the user row is gone. Unique resource identity per request. Restrict to worker role; do not cascade these tasks away before success |
+| `deletion_tombstones` | Opaque immutable subject/workspace IDs, deletion generation/time, restore-retention deadline | Minimal suppression list to prevent old backups/jobs resurrecting deleted accounts. No names/emails/finance data. Replicate outside the database backup set; operator access only |
+| `backup_runs` | UUID, kind, state, snapshot/started/finished times, manifest location, database/schema version, key IDs, artifact counts/checksums, safe error, retention deadline | Operator-only operational metadata; pending/state/time indexes. Copy run manifest to backup storage so loss of the primary DB does not lose the catalog |
+| `backup_restore_checks` | UUID, backup FK/reference, isolated target ID, started/completed times, result, elapsed time, verified counts/checksums, safe failure summary | Evidence of a usable restore, not just an uploaded file. Operator-only; no restored financial contents in results |
+
+A separate encryption-key table is **not required** if the secret manager supplies versioned keys and ciphertext/backup manifests carry key IDs. Add metadata-only key inventory later if needed. Local privacy-mode presentation needs no extra table beyond account defaults plus a non-sensitive browser preference.
+
+### 6.3 Schema and authorization rules
+
+1. User-owned rows require `user_id` and actor-scoped authorization/RLS. Workspace-owned rows retain `workspace_id` and membership checks. A user security action must not trust a client-provided workspace list.
+2. Add composite ownership constraints where a session, device, credential or push record references another user's row. Validate UUID/text ID types; auth user IDs are text in this repository.
+3. Public route handlers set actor context from verified sessions. Internal cleanup/backup workers use narrowly scoped roles; do not expose a client-controlled “worker bypass” setting.
+4. Ordinary revocation may retain a minimized event; full account deletion removes or anonymizes it according to the documented retention policy. Operational tombstones/tasks must survive the user FK without retaining a readable identity indefinitely.
+5. State enums/checks must reject impossible combinations: ready export without artifact, completed deletion with outstanding mandatory cleanup, consumed challenge without completion time, revoked device receiving a new unlock grant.
+6. Use unique identities, conditional claims, leases, retry limits and sweeps. PostgreSQL is the durable job record; Redis loss must not discard privacy requests.
+
+## 7. Export, deletion, backups, and synchronization contracts
+
+### 7.1 Complete account export
+
+- Scope: identity/profile, settings/consents, personal and every owned business workspace, memberships, wallets/categories/tags, transactions including retained soft deletions, ledger entries/lines, recurring rules/occurrences, budgets/goals/contributions, bills/payments, invoices/lines/payments, retained audit history, notifications/preferences, assistant data, saved report definitions/results where retained, attachments and business documents. Inventory every table and justify exclusions.
+- Exclude passwords/PIN hashes, TOTP seeds, recovery codes, session/registration tokens, OAuth secrets, push secrets, encryption keys, and other users' personal data. Export safe device/security metadata only.
+- Produce a versioned ZIP with a README, manifest, exact decimal strings/currencies/timezones, JSON/JSONL records with stable IDs/relationships, and original retained files. CSV summaries can supplement it; escape spreadsheet formulas. Stream/batch large data rather than buffering an account in memory.
+- Capture a consistent database snapshot across all exported workspaces; record snapshot time and schema version. Use a single bounded repeatable-read export or a durable snapshot mechanism. Do not claim a multi-page read with different snapshots is consistent.
+- Pin immutable object versions/checksums before download. Coordinate artifact retention with deletion/cleanup so files cannot disappear halfway through a successful archive; fail or explicitly report missing source artifacts instead of silently reporting success.
+- Recheck status/security generation before starting, before publishing and on every download. Deletion/revocation cancels access; an old queued worker cannot recreate the export after erasure.
+- Download through an authenticated, recently verified API; avoid long-lived public presigned URLs and email attachments. Notify that an archive is ready with a generic message. Expire and physically remove it, including incomplete uploads and temporary files.
+
+### 7.2 Account deletion
+
+Use a dedicated orchestration service. A bare `DELETE FROM user` or Better Auth's default user-delete endpoint cannot clean every financial FK, object, or running job.
+
+State flow: `requested → confirmed → quarantined → deleting → completed`, with `retryable`, `failed`, or `retention_blocked` states. Proposed UX: a preview before confirmation; acceptance after step-up immediately quarantines the account. No undo is promised after acceptance. Never show “deleted” merely because a queue accepted a job.
+
+1. Preview owned workspaces, retained files, expected deletion coverage and backup retention. Offer the full export flow first. State that previously downloaded files and emails already delivered to recipients cannot be recalled.
+2. On confirmation, consume the step-up grant and verify the current scope version. In one transaction record the request/tombstone, set account/workspace deletion fences, increment security generation, revoke sessions and unlock/step-up grants, and prevent new login/writes/jobs. Do not delete the user row yet.
+3. Capture a durable object/version manifest before deleting database references. Remove or cancel exports, report jobs, forecasts, recurrence jobs, notifications/email/push, invoice sends, and external authorizations. Queued encrypted payloads need lifecycle rechecks even when they still decrypt successfully.
+4. Add a common lifecycle guard to every worker. Fence late writes and object uploads; a worker that started before quarantine must recheck before publishing/sending and before committing results. Use generation-conditional updates plus compensating cleanup for an upload that finishes after quarantine. An external email already accepted cannot be unsent.
+5. Delete files and their stored versions/multipart remnants; hard-delete retained soft-deleted financial data in a documented FK-safe order. Include audit/idempotency/forecast/report copies, auth verification records identifiable by account, device credentials, push records, and cache keys. Do not remove schema constraints globally or disable RLS to make deletion convenient.
+6. Remove identity/provider/session records only after dependent cleanup is durably accounted for. Do not cascade away unfinished cleanup tasks. Retry idempotently after crashes; exhausted failures stay visible to operators and never become completed.
+7. Keep only minimal operational proof/tombstones for the documented retention window. “Active data removed” and “all retained backup copies expired” are separate milestones with an accurate date. Backups remain restricted, age out, and must replay the independently retained deletion list before restoration can serve traffic.
+8. A legally justified hold must specify scope, basis, reviewer and expiry; restrict retained records. Do not invent a universal financial-record retention term or use indefinite retention to avoid implementing deletion.
+
+### 7.3 Backups and cloud sync
+
+**Backups:** automate a daily PostgreSQL 18-compatible logical backup plus a manifest and a complete set of referenced private objects/versions. Use a consistent database snapshot and protect immutable object versions until the copy finishes; do not run uncoordinated destructive object cleanup during capture. Include schema/migration history and necessary role/configuration reconstruction. Keep secrets in a separately recoverable vault with documented key IDs.
+
+Use an off-host backup destination with separate credentials, encryption and restricted deletion rights. Proposed retention: 7 daily and 4 weekly copies, maximum 35 days, including object versions/failed artifacts unless an explicit retention exception exists. Apply the same declared bound to all backup locations. Alert if the last usable backup is older than 26 hours or a restore drill fails. Run a restore drill at least monthly and after significant schema/key changes.
+
+For the 24-hour RPO, daily `pg_dump` plus protected object copies is the initial choice. If the product requires a shorter loss window, explicitly add base backups and WAL archiving/PITR; a logical dump is not a PITR stream. [PostgreSQL backup reference](https://www.postgresql.org/docs/current/continuous-archiving.html)
+
+Restore into an isolated environment with outbound email/push/jobs disabled. Restore DB and objects, obtain matching keys securely, replay deletion tombstones, invalidate restored sessions/challenges/export links, reconcile durable outboxes without blindly replaying old sends, then verify checksums, tenant isolation and exact financial totals. Measure the proposed 4-hour RTO. Only enable traffic after the restore gate passes.
+
+For local reproducibility add a Docker Compose backup profile with PostgreSQL client tools, an object-copy tool, encrypted artifacts and a configurable scheduler. A local artifact demonstrates the script; the production off-host upload and restore evidence are also required for completion. Do not promise cloud durability without a configured destination.
+
+**Sync:** successful online writes are committed to the shared backend before showing “Saved.” Reuse version checks and idempotency keys. Refresh on focus, workspace switch and visible polling. A stale edit returns 409 with a reload/merge choice; never silently overwrite a concurrent financial edit or duplicate a transaction after a network retry. Lock/logout/revoke/delete clears local sensitive state and stops refetches. Backups are recovery artifacts, not the mechanism for syncing two active devices.
+
+### 7.4 Privacy mode and browser storage
+
+Extend the existing privacy preference instead of adding page-specific toggles. Cover dashboard, accounts, transactions, budgets, goals, bills, invoices, recurring entries, reports, forecasts, suggestions, notification panel/inbox, search/quick-add previews and dialogs.
+
+Mask exact balances/amounts and identifying financial text as appropriate in text, chart axes/data labels/tooltips, chart/table alternatives, `aria-label`, `title`, SVG/canvas fallback text, toast content and live announcements. Replace sensitive content with a fixed placeholder; CSS blur, transparent text, off-screen text or a screen-reader-only original amount is not masking.
+
+Avoid an initial plaintext flash: default financial rendering to concealed until the local preference and lock status are resolved, or use a server-readable non-sensitive preference cookie. On a shared browser, scope the preference to the signed-in account. Honor a local choice when applying synchronized account defaults; a server preference refresh must not unexpectedly reveal amounts.
+
+Privacy mode is visual concealment, not API authorization or encryption. It need not modify a deliberately requested invoice/report export; explain before generating a file that it includes real values. App lock and step-up controls still apply. Generic lock-screen push content must stay generic independently of this setting.
+
+Cache only the public application shell and static assets for MVP. Explicitly exclude all authenticated HTML/API/file/export responses; verify service-worker behavior rather than relying only on response headers. Clear sensitive memory, IndexedDB/Cache Storage entries if any exist, and stale persisted query state on logout, account switch, lock and deletion. Store no session tokens, PIN hashes or decrypted protected fields in localStorage. Handle unavailable browser storage and multi-tab events without throwing.
+
+## 8. API and UI contracts
+
+Proposed custom routes below complement the installed Better Auth endpoints. Prefix custom routes with `/api/security` or `/api/privacy`; obtain the actor from the session. Keep internal workers/operator backups outside the public user API.
+
+| Route / operation | Requirements |
 |---|---|
-| `GET /notifications?state=unread&type=...&cursor=...&limit=25` | Cursor page ordered by `(created_at DESC, id DESC)`; cap limit at 100; preserve `items` for old callers |
-| `GET /notifications/unread-count` | Accurate count for current actor/workspace, excluding resolved/dismissed/expired/snoozed items |
-| `PATCH /notifications/:id/read` | Existing idempotent mark-read route |
-| `POST /notifications/read-all` | Mark eligible records read up to a server-validated cutoff; newly arriving records stay unread |
-| `PATCH /notifications/:id/dismiss` | Idempotent dismissal; cancel unsent deliveries |
-| `PATCH /notifications/:id/snooze` | Valid future time, at most 30 days and no later than notification expiry; does not change the source due date |
-| `GET/PUT /notification-rules` | List/upsert validated settings with optimistic version checks; only the actor's rules |
-| `GET/PUT /notification-preferences` | Preserve legacy fields; return/apply the canonical event/channel choices |
+| Better Auth TOTP enable/verify/disable and recovery-code APIs | Use supported plugin APIs; integrate step-up, replay/rate limits, cookies and lifecycle checks |
+| `GET /api/security/status` | Minimal lock/MFA/capability state; no financial/private profile payload while locked |
+| `GET /api/security/devices` and `/sessions` | Safe display metadata and opaque IDs only; actor-owned rows |
+| `POST /api/security/reauthenticate` | Password plus enabled TOTP/recovery challenge; returns a purpose-bound grant after successful verification |
+| `PUT /api/security/devices/:id/pin` | Current actor/device, grant, validated PIN; invalidate old unlocks and reset failed counters only after proof |
+| `POST /api/security/lock` and `/unlock/pin` | Lock idempotently; PIN unlock verifies current bound device/session and durable cooldown |
+| `POST /api/security/webauthn/{register,unlock}/{options,verify}` | Fresh, one-use ceremonies with server-validated purpose/origin/RP/owner; registration requires step-up |
+| `DELETE /api/security/webauthn/:id`, `/devices/:id` | Recent authentication; revoke linked grants/sessions/push as defined in §4.3 |
+| `POST /api/security/sessions/:id/revoke`, `/sessions/revoke-others` | Ownership and current-session handling; safe library revocation adapter |
+| `GET/PUT /api/security/preferences` | Validated defaults and optimistic version; no caller-editable auth/security flags |
+| `POST /api/privacy/exports`, `GET /exports/:id`, `GET /exports/:id/download` | Request/download step-up, scoped job status, expiry and lifecycle checks; idempotent creation |
+| `POST /api/privacy/deletion-preview`, `POST /api/privacy/deletion-requests` | Server-computed scope, explicit typed confirmation and fresh purpose-bound grant; return a receipt before logout |
 
-Use consistent responses: 401 unauthenticated, 403 unverified if required by current finance routes, 404 inaccessible source/notification, 422 invalid input, 409 stale setting version. Set `Cache-Control: private, no-store`. Rate-limit mutations. Never trust a request `userId`, absolute action URL, destination address, or arbitrary kind/payload.
+Use consistent 401 unauthenticated, 403 forbidden/locked with a stable code, 404 inaccessible object, 409 stale state, 422 invalid input, and 429 plus `Retry-After`. Return `Cache-Control: private, no-store` for sensitive responses and validate Origin on custom mutations. Rate-limit challenge creation, verification and export/deletion creation separately. No sessionless deletion status endpoint exposing identities; a support receipt may be a random reference without readable account details.
 
-UI deliverables:
+UI routes: `/settings/security`, `/settings/devices`, `/settings/privacy`, `/two-factor`, and an app lock boundary. Use the installed shadcn-svelte skill when implementing components. Show setup, waiting, enabled, revoked, expired, offline and error states. Use EN/ID, seamless locale switching, dark/light themes, keyboard focus, proper labels, 44px targets and reduced motion. Security/deletion copy is direct and serious; do not hide irreversible consequences behind playful language.
 
-- Header badge uses the count endpoint. Opening the panel fetches current data; navigating across workspaces cancels stale requests and clears previous-workspace content immediately.
-- Add `/notifications` for paginated history, unread/type filters, mark-read/read-all, dismiss, snooze, and source links. Preserve the lightweight header panel.
-- Add `/settings/notifications` for MVP rule settings and existing preferences. V2 expands this page with the complete per-channel matrix and device/quiet-hour controls.
-- Notification links carry validated workspace context and reuse normal authorized source routes. If the source is gone, explain it instead of displaying stale sensitive details.
-- Poll unread counts while the app is visible (proposed 60 seconds), refresh on focus and mutations, and stop polling when hidden/unmounted. WebSockets are unnecessary for MVP.
-- Existing auth locale changes rerender message keys without refreshing the browser. External messages use the saved recipient locale; define a validated fallback to English for legacy records.
-- Use existing shadcn-svelte components and design tokens. Read the repository's shadcn-svelte skill when implementing UI components.
-- Steam/yuzu attention styling with icons and text; direct calm wording for unusual spending and overdue payments. Honor dark mode, reduced motion, 44px targets, keyboard navigation, focus management, and screen-reader status announcements.
-- Mask amounts when existing privacy mode is active. Lock-screen push content stays generic, with detailed financial evidence available after authentication.
+## 9. Step-by-step implementation for a junior programmer or coding model
 
-## 7. Step-by-step MVP implementation
+Work through these milestones sequentially. Finish a small vertical slice, run its relevant checks, and record evidence before starting the next one. Do not replace working auth or financial modules wholesale.
 
-### M1 — Map producers, consumers, and source mutations
+### M1 — Inventory current data and choose concrete integration points
 
-1. Read section 1 and list every existing notification insert, email enqueue, push send, preference reader, and source mutation that affects the rules.
-2. Identify actual recurring occurrence identities, invoice outstanding helpers, budget period/revision helpers, and ledger balance functions. Do not replace them with approximate queries.
-3. Write a canonical event-type map including existing `bill-reminder`, `budget-alert`, and assistant kinds; document aliases instead of renaming live kinds abruptly.
-4. Record the migration cutover strategy and the exact entry points that will be disabled when new producers take over.
+1. Read §1 and every path in §3; search for all session reads, sensitive table writes, file uploads/downloads, job producers/consumers and cache stores.
+2. Produce `docs/security/data-inventory.md` and an ownership/FK deletion map. Include raw SQL readers, snapshots, email payloads, report files and object versions.
+3. Record supported login methods, the installed Better Auth schema/API behavior, WebAuthn/Bun compatibility and public origin/RP ID configuration. Generate plugin schema into a temporary file for review, not straight into the live database.
+4. Confirm §2 defaults in `docs/security/decisions.md`, with an explicit production storage encryption/off-host backup choice and retention policy. Name operational/legal deployment decisions without blocking local implementation on them.
 
-**Done when:** each MVP event has one authoritative source, one producer owner, one recipient policy, and an explicit stale-source resolution path.
+**Done when:** every sensitive field and data store has an owner, protection rule, export rule and deletion path; no major reader/worker is unaccounted for.
 
-### M2 — Add schema and safe migration
+### M2 — Add schema, actor guards and durable security state
 
-1. Add the three new tables and additive extensions in section 5 to Drizzle and a new SQL migration.
-2. Add scoped foreign keys, unique dedupe keys, checks, indexes, RLS, and backfill logic.
-3. Preserve old preferences/IDs/read state and classify legacy send timestamps without resending historical notifications.
-4. Exercise migrations on both a fresh disposable database and a populated disposable database with old notifications and opt-outs. Never use development financial records as destructive fixtures.
+1. Add the required tables/columns in §6 to Drizzle and a new additive migration. Populate safe defaults and define the RLS/worker/operator role model.
+2. Implement a shared session/lifecycle/security guard used by all finance route helpers and SSR. Replace duplicated checks incrementally, retaining current verified-email and membership behavior.
+3. Add challenge consumption, security-version checks and idempotency helpers. Prevent races between revoke/delete and credential/job creation.
+4. Apply migrations to an empty disposable DB and a populated copy; verify old sessions, finance records and notification behavior remain usable before enrollment.
 
-**Done when:** both migrations succeed, old inbox/preferences still load, and raw SQL under the normal app role cannot read or write another recipient's notification data.
+**Done when:** cross-user rows are inaccessible under the normal database role, and app-locked/deleting sessions cannot bypass the common guard through an older route.
 
-### M3 — Build shared notification primitives
+### M3 — Implement TOTP and safe recovery end to end
 
-Create a focused `apps/api/src/notifications/` module with suggested files: `types.ts`, `rules.ts`, `service.ts`, `scheduler.ts`, `worker.ts`, and `routes.ts`. Keep rule evaluation functions separate from transports.
+1. Configure Better Auth server/client plugins, reviewed schema mapping and issuer. Keep existing signup OTP/reset-email flows functioning through Mailpit.
+2. Build enrollment, QR/manual key, first-code confirmation, backup-code display and login challenge screens. Use Svelte navigation for the challenge flow.
+3. Implement recovery-code use, disable/regenerate flows and the recent-auth grant service. Close alternate auth/reset/recovery bypasses; add shared rate limits and durable replay handling where missing.
+4. Revoke or rotate sessions/grants after security changes and record minimized events. Test recovery and all enabled sign-in methods, including direct API requests.
 
-1. Define strict event/evidence schemas, template keys, safe source-link mapping, decimal validation, and expiry rules.
-2. Implement idempotent create/update/resolve/dismiss/snooze helpers scoped to workspace and actor.
-3. Insert a notification and its eligible delivery intents in one transaction. Keep read state and dismissal on evidence updates.
-4. Implement durable invalidation with dirty versions, source versions, and lease claims. Add periodic recovery so no event depends solely on an in-memory timer or a Redis job surviving.
+**Done when:** a password alone cannot access finance for an MFA-enabled user, and recovery does not silently remove security or allow code reuse.
 
-**Done when:** concurrent duplicate evaluations produce one inbox record and one delivery per destination; a crash or a newer source edit cannot lose pending work.
+### M4 — Implement PIN app lock and session enforcement
 
-### M4 — Implement due-date evaluation
+1. Register an opaque browser identity after full authentication; implement PIN set/change/reset with a maintained password hasher and external pepper.
+2. Add locked/unlocked state and server lease/idle checks; exempt only explicitly safe unlock/logout/status routes. Add limits and durable cooldown counters.
+3. Build the lock boundary before protected content renders; wire manual lock, hide/resume, reload, back navigation, multiple tabs and logout. Do not preserve sensitive data behind an overlay.
+4. Test direct HTTP bypass, missing/changed browser cookie, storage clearing, cooldown persistence and recovery by full login.
 
-1. Extract the current bill evaluator and implement the calendar/stage rules in section 4.2.
-2. Add invoice and outgoing recurring-payment adapters using existing domain helpers.
-3. Add resolution/invalidation to paid, skipped, void, edited-due-date, partial-payment, archive, and recurring-rule mutation paths.
-4. Deduplicate linked bill/recurring obligations and preserve the customer-send confirmation workflow.
-5. Add EN/ID message templates and source links.
+**Done when:** server and browser agree on lock state and PIN unlock cannot elevate authentication assurance.
 
-**Done when:** all three due-date sources create the right upcoming/today/overdue notification, and becoming paid or moving the due date cancels stale sends.
+### M5 — Add supported biometric/device-security unlock
 
-### M5 — Complete budget alert evaluation
+1. Add the maintained WebAuthn libraries at reviewed versions and the credential/challenge storage from §6. Keep full passwordless sign-in disabled for this milestone.
+2. Implement registration after step-up, then assertion-based unlock of the existing bound session. Validate challenge/origin/RP/user verification/owner/counter and consume atomically.
+3. Add capability detection, cancellation and unsupported-browser copy; allow PIN/full login fallback. Add credential naming/revocation to settings.
+4. Verify with a virtual authenticator and real supported desktop/mobile PWA devices; record OS/browser results and limitations.
 
-1. Extract the current tracking-route budget alert logic into the shared evaluator.
-2. Connect transaction and budget mutation invalidations, covering old and new categories/periods on edits.
-3. Implement threshold markers, highest-crossed-threshold coalescing, zero-budget handling, and historical budget revision semantics.
-4. Add a period-rollover sweep so alerts update without the user opening the budgets page.
+**Done when:** a real platform authenticator unlocks without exposing biometric material, and fabricated/replayed/wrong-origin assertions fail.
 
-**Done when:** current budget totals match the budget screen, duplicate ticks do not repeat alerts, and edits/refunds resolve stale conditions.
+### M6 — Finish device/session settings and browser security
 
-### M6 — Complete low-balance and unusual-spending evaluation
+1. Implement safe session/device lists, revoke-one/revoke-others/remove-device operations and last-seen display. Map library token operations internally.
+2. Ensure password reset/recovery/removal invalidates outstanding credentials/grants as intended; remove linked push endpoints on device removal.
+3. Audit custom mutation Origin/CSRF checks, production cookies, trusted proxies, TLS configuration, safe error handling and RLS roles. Add a staged CSP compatible with the app; remove permissive exceptions through browser evidence.
+4. Audit service-worker caches and storage; make authenticated responses non-cacheable and lock/logout cleanup reliable.
 
-1. Add recorded account threshold settings and the episode/hysteresis state machine.
-2. Reuse current forecast suggestions for projected warnings; preserve consent, stale-source checks, and existing snooze/dismiss behavior.
-3. Implement `unusual-expense-v1` exactly as specified, including insufficient-history results and explainable evidence.
-4. Add invalidation for transfers, ledger/opening changes, backdated transactions, deletion/restoration, and category changes.
-5. Process expensive historical invalidations in batches with persisted cursors.
+**Done when:** a second browser loses access on its next request after revocation, even if a cached UI or old cookie remains.
 
-**Done when:** arithmetic is exact, current and forecast balances are distinguished, insufficient history never generates an anomaly accusation, and duplicate producers are eliminated.
+### M7 — Encrypt protected data and migrate safely
 
-### M7 — Make scheduling and existing transports durable
+1. Implement `security/encryption.ts` and key-provider adapters with versioned envelopes, AAD, independent purpose keys and safe failures. Document allowed field readers.
+2. Integrate every writer/reader in the inventory, including auth adapters where supported, SQL-backed invoice/report generation, audit/idempotency copies, notifications and background jobs.
+3. Ship additive columns and version-aware readers, backfill in batches, compare decrypted outputs, then remove plaintext duplicates/fallbacks. Keep old queued email/push data readable until drained or migrated.
+4. Exercise rotation, missing/wrong keys, tampering, cross-tenant ciphertext swaps and rollback. Confirm database/object-volume encryption and backup-key recovery in the chosen deployment.
 
-1. Use the database due/dirty state to schedule minute sweeps. Claim bounded pages (start at 100 records) with a lease and `FOR UPDATE SKIP LOCKED` or the established equivalent.
-2. Commit notification/outbox state before attempting Redis enqueue. If Redis fails, retain pending rows and let a later recovery sweep enqueue them.
-3. Claim delivery rows atomically; recheck membership, source, preferences, consent, expiry, and device ownership. Release DB transactions before network calls.
-4. Reuse encrypted email jobs and existing push encryption. Map new delivery IDs through workers; mark SMTP accepted only after transport acceptance. Track each push destination independently and deactivate 404/410 endpoints.
-5. Use bounded retries with exponential backoff for retryable failures; proposed maximum five attempts. Treat permanent errors and ambiguous SMTP outcomes explicitly. Exactly-once external delivery cannot be guaranteed across a crash after provider acceptance; document that limitation and avoid blind retries for known ambiguity.
-6. Recover queued and expired-lease jobs, run retention cleanup, expose backlog/oldest-pending/retry/unknown counters, and use graceful shutdown.
-7. Wire the worker into the existing development launcher and deployment instructions. Keep one scheduler owner and stop the replaced notification producers. Preserve auth email processing and confirmed customer invoice jobs.
+**Done when:** a dump/log/job scan contains no selected plaintext canaries or raw secrets, while authorized invoices/forecasts/reports remain correct.
 
-**Done when:** stopping/restarting API, worker, or Redis does not lose notification intents; source/preference changes suppress queued delivery; one failed device does not resend to successful devices.
+### M8 — Build full account export
 
-### M8 — Extend API and settings
+1. Implement `privacy/exports.ts`, its registry of included/excluded data, a durable job table and a bounded worker with lease recovery.
+2. Build a consistent manifest/record archive with exact financial values and referenced files; apply export-specific redaction and secure temporary-file handling.
+3. Add settings request/status/download UI, reauthentication, expiry, access checks and cleanup. Keep email notifications generic.
+4. Compare an export to a populated fixture covering personal and multiple businesses; simulate object failure, worker crash, Redis loss and concurrent deletion/revocation.
 
-1. Implement section 6 with typed request/response schemas and cursor validation.
-2. Make read/dismiss/snooze idempotent, unread totals accurate, and source links authorized.
-3. Preserve old bill/assistant preference clients through adapters and optimistic version checks.
-4. Add current low-balance and unusual-spending rule configuration without requiring AI consent or a provider account.
+**Done when:** the user receives a complete, documented archive through authenticated download and failed/incomplete exports never appear ready.
 
-**Done when:** unauthorized workspace/recipient requests fail without exposing existence, and simultaneous read/arrival/preference updates behave predictably.
+### M9 — Build account erasure with job and object fencing
 
-### M9 — Build the notification center
+1. Implement preview/confirmation and durable deletion states with lifecycle guards. Record tombstones outside the ordinary backup restore set.
+2. Add the explicit FK-safe erasure service and object/version cleanup manifest. Integrate every producer/worker with deletion generation checks, including existing encrypted auth email jobs.
+3. Build progress/receipt/error operations and operator retries. Keep completion truthful during external failures and documented retention holds.
+4. Test deletion with retained soft deletions, archives, invoices, reports, assistant state, notifications and active workers. Restore an older backup and demonstrate the deleted subject cannot return to service.
 
-1. Add the full inbox route and settings route; update the existing header dropdown.
-2. Render structured EN/ID templates, exact locale-formatted amounts, due dates, evidence, and safe source actions.
-3. Add loading, empty, offline, retryable-error, resolved-source, and expired-source states.
-4. Handle workspace switches, locale changes, unread count refresh, mobile layout, dark mode, keyboard focus, privacy mode, and reduced motion.
-5. Do not prompt for browser push permissions on page load; retain a clear user-initiated enable action.
+**Done when:** no active data, access or late job survives successful erasure, and retained backup handling is explained and enforceable.
 
-**Done when:** a user can discover every MVP alert type, understand why it appeared, open its source, and control it without a browser refresh.
+### M10 — Automate backups and prove restores
 
-### M10 — Acceptance, documentation, and completion gate
+1. Add `infra/backup/`, scheduled Docker tooling, backup manifests and operational run/restore records. Use bounded credentials and PostgreSQL-compatible tools.
+2. Configure encrypted off-host DB/object backups with retention and failure alerts. Never hard-code credentials or copy live PostgreSQL volume files as a logical backup.
+3. Write `docs/security/restore-runbook.md`: restore isolation, key retrieval, object validation, deletion replay, session invalidation, outbox reconciliation and traffic re-enable gate.
+4. Run a complete restore drill with synthetic finance/files and key rotation. Measure RPO/RTO and report failed artifacts or unmet targets honestly.
 
-1. Run the meaningful checks in section 8 using disposable databases, isolated Redis namespaces/databases, and local Mailpit. Stub push transport for deterministic integration tests, plus one supported-browser push smoke check when configured.
-2. Run repository type checks and the web production build. Add focused notification test scripts and document their exact prerequisites.
-3. Update README with worker startup, supported sources, settings defaults, cutover/backfill behavior, retention, and SMTP acceptance limitations.
-4. Record measured scheduler latency/query behavior and any remaining limitation. Do not close MVP with a known acceptance failure or replace missing behavior with a placeholder.
+**Done when:** a scheduled backup restores into a usable isolated application within the chosen recovery targets; artifact upload alone is insufficient.
 
-**Done when:** every MVP checkbox below has evidence, legacy reminder flows still work, and the feature runs through its normal UI/API/worker path.
+### M11 — Finish online sync and privacy mode everywhere
 
-## 8. Required acceptance checks
+1. Reuse version/idempotency behavior across devices; refresh on focus/visibility/workspace changes and display saved/offline/conflict states.
+2. Inventory every rendered financial value and move masking into shared presentation helpers/components. Keep the current shared preference and add safe account defaults/tab synchronization.
+3. Cover charts, accessible alternatives, notifications, assistant text, dialogs, initial SSR/hydration and browser history. Add deliberate export disclosure while masked.
+4. Test two browsers editing the same record, lost responses/retries, lock/logout propagation, first-paint concealment and all relevant screens at 360px.
 
-### Domain correctness
+**Done when:** devices converge to committed backend data and concealed values cannot be recovered from rendered/accessible UI text while privacy mode is active.
 
-- [ ] Bill due in three days, due today, overdue, paid, skipped, disabled, archived, and edited due date.
-- [ ] Invoice draft/issued/partially paid/paid/void; remaining amount is exact; no automatic customer email.
-- [ ] Outgoing recurring payment reminder; linked bill suppresses duplicate; generated/paid occurrence suppresses stale reminder.
-- [ ] 79.99%, exactly 80%, exactly 100%, threshold jump, zero budget, parent/subcategory spend, refund/delete/restore, archive, period rollover, and budget revision.
-- [ ] Recorded balance below/equal/above threshold; zero threshold; episode recovery; transfer, opening balance, reversal, future/backdated entry, archived account.
-- [ ] Forecast warning remains consent-aware and clearly projected; no duplicate warning for the same condition.
-- [ ] Unusual expense below/at/above thresholds; zero MAD; even sample sizes; insufficient history; other currency/category excluded; backdated/edit/delete baselines.
-- [ ] Workspace timezone midnight, DST boundary, leap day, and month-end recurrence; no conversion through server-local dates.
+### M12 — Release evidence and operational handoff
 
-### Delivery and failure handling
+1. Complete §10 using isolated test DBs/Redis, Mailpit, disposable object buckets and an isolated backup destination. Never use real user financial data as destructive test fixtures.
+2. Run repository type checks and production build; run affected auth, finance, assistant, invoice, report and notification regressions. Verify a normal `bun run dev` path including new worker/cleanup schedules.
+3. Document configuration, key rotation/recovery, factor recovery, incident response, exports/deletion, retention and backup restore. Update `.env.example` with names/placeholders only and separate local defaults from production requirements.
+4. Record passed/failed checks and operational owners. If production storage, real-device verification or restore evidence is missing, report that exact incomplete gate instead of marking MVP complete.
 
-- [ ] Two concurrent schedulers and duplicate queue deliveries create one intent per dedupe identity.
-- [ ] Crash before/after outbox commit, Redis outage, lost Redis job, worker restart, stale lease, retry exhaustion, and missing SMTP configuration.
-- [ ] Mailpit receives eligible bill email; enqueue alone never marks it accepted. Paid/archived/rescheduled source, revoked membership, disabled preference, or expired notification suppresses pending email.
-- [ ] Existing assistant email/push consent checks and confirmed customer invoice reminders still pass.
-- [ ] Several push devices: success, temporary failure, and 410 endpoint; retry only the failed eligible destination.
-- [ ] Ambiguous SMTP outcome is visible as unknown and is not silently retried as a fresh send.
-- [ ] Dismiss/snooze/read-all and source resolution are idempotent; snooze does not alter source due dates.
-- [ ] Retention and user/workspace deletion remove derived content and prevent stale worker sends or recreated historical alerts.
+**Done when:** every MVP acceptance check has evidence and the application can be operated and recovered by someone following the runbooks.
 
-### Isolation and UI
+## 10. Required MVP acceptance checks
 
-- [ ] Two unrelated workspaces and two actors in a fixture cannot fetch/count/mutate each other's notifications, rules, preferences, delivery rows, or source links.
-- [ ] RLS checks use a non-superuser application role; worker-only access is not exposed through request parameters.
-- [ ] No sensitive financial data or secrets in logs or generic lock-screen pushes.
-- [ ] At least 101 unread fixtures prove the header count is independent of the first page; pagination has no duplicates or missing boundary records.
-- [ ] Browser flow from source creation through worker generation to header/full inbox, read/dismiss/snooze, and source navigation.
-- [ ] EN/ID switching without refresh, light/dark mode, reduced motion, keyboard-only use, screen-reader labels, privacy mode, and 360px layout.
-- [ ] Switching workspaces while a fetch is pending never shows the previous workspace's notices.
+### Authentication, device lock and sessions
 
-### Performance and rollout
+- [ ] Enrollment stays pending until the first valid TOTP; QR URI and backup codes do not enter logs, URLs, analytics or external QR services.
+- [ ] Password-only login, TOTP-pending cookies and every alternate enabled login path cannot access finance for a user requiring MFA.
+- [ ] Invalid/expired/replayed TOTP and concurrent reuse of one recovery code are rejected; rate limits persist across processes and return usable retry guidance.
+- [ ] Disabling/regenerating/recovering factors requires the intended proof, rotates/revokes affected sessions, and does not introduce email-only MFA removal.
+- [ ] PIN enrollment/change/reset, five-failure cooldown, ten-failure full-login requirement and restart/multi-process behavior work; plaintext PIN never persists.
+- [ ] PIN cannot create a login session or satisfy step-up for export, deletion or security changes.
+- [ ] Idle/background/manual lock, reload, multiple tabs and storage clearing cannot expose protected data or bypass direct API/SSR/file access.
+- [ ] WebAuthn succeeds on documented supported real devices and handles unavailable/cancelled authenticators; wrong origin/RP/user/credential, missing user verification and replay fail.
+- [ ] Session list exposes no reusable tokens; revoke-one/revoke-others/remove-device behave distinctly and block a second browser on its next request.
+- [ ] Origin/CSRF, secure cookies, trusted proxy spoofing, unverified users, account deletion state and cross-user/RLS access have direct request tests.
 
-- [ ] Migration succeeds on empty and populated fixtures; old IDs/read flags/opt-outs remain intact; no historical mail flood.
-- [ ] Measure against at least 10 accounts, 10,000 transactions, and 1,000 due sources across several workspaces. Record actual query plans, batch sizes, and timings.
-- [ ] Proposed local acceptance target: eligible in-app notices appear within two minutes under that fixture; inbox/count API p95 under 500ms across a documented sample. If hardware differs, report the result and tune before marking this gate complete.
-- [ ] No provider calls inside long database transactions, unbounded inbox responses, or full-history scans on every scheduler tick.
-- [ ] Type checks, production build, notification tests, and existing affected reminder regressions pass.
+### Encryption and privacy presentation
 
-## 9. V2 implementation sequence
+- [ ] Selected sensitive values and all their live duplicates are encrypted/minimized; raw database/queue/log/export canary searches match the inventory's protection promises.
+- [ ] Wrong/missing keys, tampered tags, wrong tenant/entity/field AAD and unknown envelope versions fail safely; no plaintext fallback after cutover.
+- [ ] Key rotation handles legacy rows/jobs and historical backups; losing one environment's key does not silently corrupt records or affect another environment.
+- [ ] Encrypted migration preserves existing data, invoice snapshots, exact ledger totals, financial reports, forecasts and authorized file downloads.
+- [ ] Actual database/object/backup at-rest protection and secret storage are documented and verified; local Compose defaults are not represented as production encryption.
+- [ ] Privacy mode covers every listed financial surface, tooltips, chart labels, `aria-label`/screen-reader alternatives and notifications without an initial reveal flash.
+- [ ] Masking, lock and logout work with unavailable localStorage, two accounts on one browser, multiple tabs, browser back navigation and service-worker caches.
+- [ ] EN/ID changes without reload, light/dark themes, reduced motion, keyboard focus, labels, 44px targets and 360px layouts pass for all new security screens.
 
-### V2.1 — Goal milestone celebrations
+### Export and deletion
 
-1. Reuse goal/contribution totals in the goal currency. Define milestones 25%, 50%, 75%, and 100%; reject or specially handle a zero target without division.
-2. Persist emitted milestone markers per goal/recipient. A withdrawal and recontribution must not repeat a celebration. Target edits reevaluate progress without resetting emitted milestones; define explicit reset separately if needed.
-3. If one contribution crosses several milestones, show the highest new milestone and mark the lower crossed milestones consumed.
-4. Persist a normal notification and make any celebration animation optional, honoring reduced motion and mascot preferences. Business mode stays restrained.
-5. Test concurrent contributions, withdrawal/re-add, target edits, archival, currency separation, and animation accessibility.
+- [ ] Full export includes all inventory-approved personal/business records and retained files with stable relationships, exact decimals and a consistent snapshot.
+- [ ] Exports omit authentication secrets, protected provider tokens and other users' data; downloads require current authorized recent authentication and expire physically.
+- [ ] Large exports are bounded; worker crash, missing file, Redis failure, concurrent mutation/revocation/deletion and repeated creation do not produce duplicate or incomplete “ready” archives.
+- [ ] Deletion preview requires explicit confirmation and step-up, fences all owned scopes, revokes sessions, prevents login, and handles unexpected shared ownership/holds safely.
+- [ ] Complete deletion removes retained soft deletions, FKs, audit/idempotency/assistant/report/notification copies, object versions, temporary files, auth records and cache data according to the inventory.
+- [ ] Concurrent/late email, invoice, export, forecast, recurring and upload workers cannot publish/send/recreate data after the deletion fence; unavoidable already-accepted external delivery is documented.
+- [ ] Crashes and partial object/provider failures resume from durable checkpoints; completion waits for required cleanup and reports retained backup expiry accurately.
+- [ ] Restoring a backup taken before erasure replays independent tombstones before traffic/jobs and does not resurrect the account or its files.
 
-### V2.2 — Unified customizable email and push
+### Backup, synchronization and rollout
 
-1. Expand `/settings/notifications` into a per-event in-app/email/push matrix using the existing preferences table and delivery outbox.
-2. Add device list/remove actions, permission-denied/unsupported states, verified-email eligibility, quiet hours, and timezone controls. Unsubscribing one browser device must not silently disable all other devices.
-3. Defer external delivery during quiet hours, then recheck source and expiry; do not delay the in-app inbox. Handle quiet hours spanning midnight and DST.
-4. Add preview/test delivery to the authenticated user's own verified destination, with rate limits. Never allow an arbitrary destination supplied by the client.
-5. Enabling a channel applies prospectively; do not replay the entire inbox. Preserve opt-outs across account/device changes.
-6. Verify every new type through Mailpit and a controlled push transport, including preference changes after enqueue and partial device failure.
+- [ ] Scheduled encrypted backup contains a consistent DB plus referenced object set, checksums/schema/key metadata, off-host copy, and enforced retention.
+- [ ] Isolated restore succeeds with required historical keys and correct exact balances/files; deleted subjects and old sessions remain unusable, and old outboxes do not flood email/push.
+- [ ] Measured recovery meets the chosen RPO/RTO; failed/missing/stale backups and failed restore drills alert an operational owner.
+- [ ] Two online browsers converge after writes; stale edits return conflicts, retries are idempotent, and offline writes do not falsely show “Saved.”
+- [ ] Fresh/populated migration and rollback/roll-forward drills preserve existing working auth/finance flows; normal API roles pass RLS isolation tests.
+- [ ] Type checks, production build, affected integration/browser regressions, real-device evidence, key/restore runbooks, and deployment configuration are complete before marking MVP 100%.
 
-**V2 complete when:** milestone dedupe and accessible celebration pass, and each eligible type can be configured independently across supported channels with quiet hours and device management.
+## 11. V2 implementation sequence and additional tables
 
-## 10. Advanced implementation sequence — WhatsApp and SMS
+### V2.1 — Read-only bank connections
 
-1. Select a provider when this phase begins; check current official documentation for verified senders, templates, delivery receipts, opt-out, rate limits, and region support. Provider pricing and rules are not assumed by this plan.
-2. Add `notification_contact_points` and verify destination ownership before use. Record explicit per-channel consent, its source/time, and revocation; encrypt stored phone values and redact logs.
-3. Extend the existing delivery outbox with provider adapters and channel-specific limits. Do not give providers access to the full finance database.
-4. Add authenticated webhook handling with signature/replay validation and unique provider-event IDs. Apply receipts monotonically so duplicate or out-of-order callbacks do not downgrade terminal status.
-5. Process opt-out promptly, cancel pending sends, and expose understandable blocked/failed/unknown status. Never switch to a paid channel automatically after email failure without explicit consent.
-6. Add per-user/workspace quotas and spend caps, generic message previews, sandbox-only development credentials, and operational reconciliation for uncertain deliveries.
-7. Test opt-in/out, verified ownership, forged/duplicate callbacks, retries, outages, rate limits, budget caps, and deletion. Document provider setup and costs before enabling real sends.
+1. Select an aggregator supported in the intended market; review scopes and processing terms. Use hosted consent/redirect flows.
+2. Add `bank_connections` (workspace, provider, encrypted credential reference, read-only granted scopes, consent/status/expiry), `bank_connection_accounts` (scoped provider-to-wallet mapping), and `bank_sync_runs` (cursor, status, attempts, timestamps).
+3. Reject write/payment scopes; never collect bank passwords, PINs or card security codes. Validate callback ownership/state and webhook signatures/replay protection.
+4. Extend data inventory, export/deletion, token rotation/revocation, audit, sync idempotency and incident response before enabling real accounts.
 
-**Advanced complete when:** opted-in destinations receive eligible notifications through the same scoped outbox, receipts/opt-outs reconcile correctly, and configured quotas prevent uncontrolled messaging costs.
+### V2.2 — Business audit experience
 
-## 11. Instructions for the implementer
+1. Extend existing `audit_logs`; do not create a competing finance history table.
+2. Add event schema/version, actor role snapshot, stable operation/correlation ID, immutable event time and redacted changes as needed. Restrict inserts and make financial audit mutations append-only through the application role.
+3. Add role-authorized history/search/export UI and retention/integrity monitoring. Later integrity features may use signed checkpoints stored outside the primary DB; a database hash chain alone does not defeat a privileged attacker who can rewrite it.
+4. Keep security events distinct from business finance history and prove that account deletion/retention rules handle both correctly.
 
-- Work one numbered task at a time; finish its acceptance condition before claiming it complete.
-- Reinspect actual schema and routes before coding because the repository may have changed since this plan.
-- Prefer a small shared service and domain adapters over a second independent notification system.
-- Keep financial calculations, trigger conditions, persistence, and transport results separate and testable.
-- Preserve unrelated work in the workspace. This issue does not authorize changing other feature priorities or sending customer/provider messages during development.
-- Deliver migrations, backend, worker wiring, UI, localization, meaningful tests, and startup documentation together. A table plus a static screen is not a completed MVP.
+### V2.3 — Formal privacy and compliance operations
+
+1. Have qualified reviewers assess applicable jurisdictions, controller/processor roles, residency/transfers, lawful bases, notices, processor agreements and incident duties. Do not advertise GDPR/PDP compliance because an export button exists.
+2. Inventory processing purposes and consent versions; reuse `assistant_settings` consent for AI. Add `consent_records` only for additional purposes needing separate proof, plus `privacy_requests`, `retention_holds`, and `data_processing_register` where the reviewed process requires them.
+3. Formalize access/correction/portability/erasure requests, retention exceptions, breach response and provider deletion. Track evidence and deadlines based on applicable requirements rather than hard-coding one universal rule.
+4. Prefer hosted payment providers. Do not store full card credentials or CVV. Assess actual PCI scope if card handling is introduced; outsourcing payments does not automatically remove every obligation.
+
+Primary legal/standards references for review: [GDPR official text](https://eur-lex.europa.eu/eli/reg/2016/679), [Indonesia Law No. 27 of 2022 on Personal Data Protection](https://peraturan.bpk.go.id/Home/Download/224884/UU%20Nomor%2027%20Tahun%202022.pdf), and [PCI SSC guidance on sensitive authentication data](https://www.pcisecuritystandards.org/faqs/1533/). These references inform the review; this implementation plan does not establish legal compliance.
+
+## 12. Suggested file organization and developer handoff
+
+```text
+apps/api/src/security/
+  guards.ts                 # actor, lifecycle, lock and recent-auth rules
+  challenges.ts             # one-use purpose-bound challenges/grants
+  devices.ts                # browser registration, session adapter, revocation
+  pin.ts                    # PIN hashing, throttling and recovery
+  webauthn.ts                # maintained verifier integration
+  encryption.ts             # versioned envelopes and AAD
+  keys.ts                   # environment/KMS adapters, never key material in Git
+  events.ts                 # minimized security events
+  routes.ts
+apps/api/src/privacy/
+  inventory.ts              # explicit export/erasure registry
+  exports.ts
+  deletion.ts
+  cleanup.ts
+  worker.ts
+apps/web/src/routes/(app)/settings/{security,devices,privacy}/
+apps/web/src/routes/(auth)/two-factor/   # adapt to actual route-group structure
+apps/web/src/lib/security/              # lock boundary, safe state and capability UI
+infra/backup/
+docs/security/
+apps/api/tests/security/
+apps/api/tests/privacy/
+apps/web/tests/security/
+```
+
+Use existing auth, storage, queue, money, versioning, notification and cleanup helpers where compatible. Keep module responsibilities small. For each milestone, the handoff must identify changed files, migrations/configuration, observed checks, limitations and the next unfinished acceptance item. Do not reset another feature's completion status when replacing this plan, and do not mark unchecked requirements complete based only on code inspection.

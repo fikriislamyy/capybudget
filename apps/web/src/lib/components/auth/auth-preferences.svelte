@@ -7,7 +7,7 @@
 
   function switchLocale() {
     authUi.locale = authUi.locale === 'en' ? 'id' : 'en';
-    localStorage.setItem('capybudget-locale', authUi.locale);
+    try { localStorage.setItem('capybudget-locale', authUi.locale); } catch {}
   }
 
   function toggleTheme() {
@@ -15,7 +15,7 @@
     const apply = () => {
       authUi.dark = next;
       document.documentElement.classList.toggle('dark', next);
-      localStorage.setItem('capybudget-theme', next ? 'dark' : 'light');
+      try { localStorage.setItem('capybudget-theme', next ? 'dark' : 'light'); } catch {}
     };
 
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && document.startViewTransition) document.startViewTransition(apply);
@@ -30,5 +30,5 @@
 
 <style>
   .tools{display:flex;align-items:center;gap:8px}
-  button{border:1px solid #e5e8e4;border-radius:10px;background:transparent;color:inherit;padding:8px 11px;font:600 12px inherit;cursor:pointer}
+  button{min-height:44px;border:1px solid #e5e8e4;border-radius:10px;background:transparent;color:inherit;padding:8px 11px;font:600 12px inherit;cursor:pointer}
 </style>

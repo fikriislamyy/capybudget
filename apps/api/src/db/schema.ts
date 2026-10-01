@@ -8,6 +8,9 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
+  twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
+  accountStatus: text('account_status').notNull().default('active'),
+  securityVersion: integer('security_version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });
@@ -280,6 +283,7 @@ export const financeNotificationPreferences = pgTable('finance_notification_pref
 
 export const pushSubscriptions = pgTable('push_subscriptions', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  securityDeviceId: uuid('security_device_id').references(() => securityDevices.id,{onDelete:'cascade'}),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }), endpoint: text('endpoint').notNull(), p256dh: text('p256dh').notNull(), auth: text('auth').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => [uniqueIndex('push_subscriptions_endpoint_unique').on(table.workspaceId,table.userId,table.endpoint), uniqueIndex('push_subscriptions_workspace_id_unique').on(table.workspaceId,table.id), index('push_subscriptions_user_idx').on(table.workspaceId,table.userId)]);
@@ -445,4 +449,66 @@ export const reportExports = pgTable('report_exports', {
 
 export const reportExportCleanup = pgTable('report_export_cleanup', {
   objectKey: text('object_key').primaryKey(), queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(), attempts: integer('attempts').notNull().default(0), lastError: text('last_error')
+});
+
+// Better Auth owns factor secrets and recovery material; the plugin encrypts them.
+export const twoFactor = pgTable('two_factor', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  secret: text('secret').notNull(), backupCodes: text('backup_codes').notNull(),
+  verified: boolean('verified').notNull().default(false),
+  failedVerificationCount: integer('failed_verification_count').notNull().default(0),
+  lockedUntil: timestamp('locked_until', { withTimezone: true })
+}, table => [uniqueIndex('two_factor_user_unique').on(table.userId)]);
+export const securityDevices = pgTable('security_devices', {
+  id: uuid('id').defaultRandom().primaryKey(), userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  tokenDigest: text('token_digest').unique(),
+  label: text('label').notNull(), pinHash: text('pin_hash'), lockEnabled: boolean('lock_enabled').notNull().default(false),
+  failures: integer('failures').notNull().default(0), cooldownUntil: timestamp('cooldown_until', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), revokedAt: timestamp('revoked_at', { withTimezone: true })
+});
+export const sessionSecurity = pgTable('session_security', {
+  sessionId: text('session_id').primaryKey().references(() => session.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  deviceId: uuid('device_id').notNull().references(() => securityDevices.id, { onDelete: 'cascade' }),
+  lockedAt: timestamp('locked_at', { withTimezone: true }), unlockedUntil: timestamp('unlocked_until', { withTimezone: true }),
+  lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow()
+});
+export const securityChallenges = pgTable('security_challenges', {
+  id: uuid('id').defaultRandom().primaryKey(), sessionId: text('session_id').notNull().references(() => session.id, { onDelete: 'cascade' }),
+  purpose: text('purpose').notNull(), value: text('value').notNull(), securityVersion: integer('security_version').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), consumedAt: timestamp('consumed_at', { withTimezone: true })
+});
+export const webauthnCredentials = pgTable('webauthn_credentials', {
+  id: text('id').primaryKey(), deviceId: uuid('device_id').notNull().references(() => securityDevices.id, { onDelete: 'cascade' }),
+  publicKey: text('public_key').notNull(), counter: bigint('counter', { mode: 'number' }).notNull().default(0),
+  transports: jsonb('transports').notNull().default([]), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+});
+export const securityEvents = pgTable('security_events', {
+  id: uuid('id').defaultRandom().primaryKey(), userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+  action: text('action').notNull(), outcome: text('outcome').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+});
+export const factorReplays = pgTable('factor_replays', {
+  digest: text('digest').primaryKey(), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull()
+});
+
+export const userSecuritySettings = pgTable('user_security_settings', {
+ userId:text('user_id').primaryKey().references(()=>user.id,{onDelete:'cascade'}), privacyDefault:boolean('privacy_default').notNull().default(false), updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow()
+});
+export const privacyExports = pgTable('privacy_exports', {
+ id:uuid('id').defaultRandom().primaryKey(),userId:text('user_id').notNull().references(()=>user.id,{onDelete:'cascade'}),requestKey:text('request_key').notNull(),status:text('status').notNull().default('queued'),securityVersion:integer('security_version').notNull(),objectKey:text('object_key'),checksum:text('checksum'),byteCount:bigint('byte_count',{mode:'number'}),attempts:integer('attempts').notNull().default(0),leaseUntil:timestamp('lease_until',{withTimezone:true}),failureCode:text('failure_code'),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '24 hours'`)
+},t=>[uniqueIndex('privacy_exports_user_request_unique').on(t.userId,t.requestKey),index('privacy_exports_work_idx').on(t.status,t.leaseUntil,t.expiresAt)]);
+export const accountDeletionRequests = pgTable('account_deletion_requests', {
+ id:uuid('id').defaultRandom().primaryKey(),userId:text('user_id').references(()=>user.id,{onDelete:'set null'}),subjectId:text('subject_id').notNull().unique(),status:text('status').notNull().default('quarantined'),receiptDigest:text('receipt_digest').notNull(),manifest:jsonb('manifest').notNull(),workspaceIds:jsonb('workspace_ids').notNull(),attempts:integer('attempts').notNull().default(0),leaseUntil:timestamp('lease_until',{withTimezone:true}),failureCode:text('failure_code'),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),completedAt:timestamp('completed_at',{withTimezone:true})
+},t=>[index('account_deletion_work_idx').on(t.status,t.leaseUntil)]);
+export const privacyCleanupTasks = pgTable('privacy_cleanup_tasks', {
+ id:uuid('id').defaultRandom().primaryKey(),requestId:uuid('request_id').notNull().references(()=>accountDeletionRequests.id,{onDelete:'cascade'}),objectKey:text('object_key').notNull(),status:text('status').notNull().default('pending'),attempts:integer('attempts').notNull().default(0)
+},t=>[uniqueIndex('privacy_cleanup_request_object_unique').on(t.requestId,t.objectKey)]);
+export const deletionTombstones = pgTable('deletion_tombstones', {
+ subjectId:text('subject_id').primaryKey(),workspaceIds:jsonb('workspace_ids').notNull(),generation:integer('generation').notNull(),deletedAt:timestamp('deleted_at',{withTimezone:true}).notNull().defaultNow(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '35 days'`)
+});
+export const backupRuns = pgTable('backup_runs', {
+ id:uuid('id').primaryKey(),objectKey:text('object_key').notNull(),checksum:text('checksum').notNull(),keyId:text('key_id').notNull(),status:text('status').notNull(),byteCount:bigint('byte_count',{mode:'number'}).notNull(),durationMs:integer('duration_ms').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()
+});
+export const backupRestoreChecks = pgTable('backup_restore_checks', {
+ id:uuid('id').defaultRandom().primaryKey(),backupId:uuid('backup_id').notNull(),outcome:text('outcome').notNull(),durationMs:integer('duration_ms').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()
 });

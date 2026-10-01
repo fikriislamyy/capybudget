@@ -1,4 +1,7 @@
 <script lang="ts">
+  import {getContext as privacyContext} from 'svelte';
+  import {concealed,PRIVACY_CONTEXT,type PrivacyState} from '$lib/privacy';
+  const privacy=privacyContext<PrivacyState>(PRIVACY_CONTEXT);
   import { getContext } from 'svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -14,7 +17,7 @@
   const authUi=getUiContext<AuthUiState>(AUTH_UI_CONTEXT);const t=(key:Parameters<typeof trackingText>[1])=>trackingText(authUi.locale,key);
   let accounts=$state<Account[]>([]),name=$state(''),kind=$state('cash'),openingBalance=$state('0'),error=$state(''),busy=$state(false),loading=$state(true);
   let reloadKey=$state(0),requestSequence=0;
-  $effect(()=>{const id=workspace.selectedId;const key=reloadKey;if(id)void load(id);});
+  $effect(()=>{void (workspace as {revision?:number}).revision;const id=workspace.selectedId;const key=reloadKey;if(id)void load(id);});
   async function load(id:string){
     const sequence=++requestSequence;loading=true;error='';
     try{const r=await fetch('/api/workspaces/'+id+'/accounts');const j=await r.json();if(sequence!==requestSequence)return;if(!r.ok)throw new Error(j.message??'Unable to load accounts.');accounts=j.items;}
@@ -44,7 +47,7 @@
         {#if loading}<p role="status">Loading accounts…</p>
         {:else if accounts.length===0}<p class="empty">No accounts yet. Add your first wallet.</p>
         {:else}<div class="accounts">{#each accounts as account (account.id)}
-          <article class="account"><span class="account-icon" aria-hidden="true">{account.kind==='cash'?'◉':account.kind==='credit_card'?'▤':'↗'}</span><div class="account-copy"><strong>{account.name}</strong><small>{account.kind.replace('_',' ')} · {account.currency}</small></div><strong class="balance">{account.currency} {account.balance}</strong><Button size="sm" variant="ghost" onclick={()=>rename(account)} aria-label="Rename account">Edit</Button><Button size="sm" variant="ghost" onclick={()=>archive(account)} aria-label="Archive account">{t('archive')}</Button></article>
+          <article class="account"><span class="account-icon" aria-hidden="true">{account.kind==='cash'?'◉':account.kind==='credit_card'?'▤':'↗'}</span><div class="account-copy"><strong>{account.name}</strong><small>{account.kind.replace('_',' ')} · {account.currency}</small></div><strong class="balance">{account.currency} {concealed(account.balance,privacy.hidden)}</strong><Button size="sm" variant="ghost" onclick={()=>rename(account)} aria-label="Rename account">Edit</Button><Button size="sm" variant="ghost" onclick={()=>archive(account)} aria-label="Archive account">{t('archive')}</Button></article>
         {/each}</div>{/if}
       </Card.Content>
     </Card.Root>
@@ -52,7 +55,7 @@
       <Card.Content><form onsubmit={create}><Field.FieldGroup>
         <Field.Field><Field.FieldLabel for="account-name">{t('accountName')}</Field.FieldLabel><Input id="account-name" bind:value={name} maxlength={100} required placeholder="Everyday bank" /></Field.Field>
         <Field.Field><Field.FieldLabel for="account-kind">{t('accountType')}</Field.FieldLabel><select id="account-kind" bind:value={kind}><option value="cash">Cash</option><option value="bank">Bank</option><option value="e_wallet">E-wallet</option><option value="credit_card">Credit card</option><option value="savings">Savings</option><option value="investment">Investment wallet</option></select></Field.Field>
-        <Field.Field><Field.FieldLabel for="opening">{t('openingBalance')}</Field.FieldLabel><Input id="opening" bind:value={openingBalance} inputmode="decimal" required /></Field.Field>
+        <Field.Field><Field.FieldLabel for="opening">{t('openingBalance')}</Field.FieldLabel><Input id="opening"  type={privacy.hidden?'password':'text'} bind:value={openingBalance} inputmode="decimal" required /></Field.Field>
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <Button type="submit" disabled={busy}>{busy?t('saving'):t('addAccount')}</Button>
       </Field.FieldGroup></form></Card.Content>

@@ -5,6 +5,7 @@ import { client } from '../db';
 import { nextOccurrenceDate, workspaceToday } from '../tracking/recurrence';
 import { budgetProgress } from './money';
 import webpush from 'web-push';
+import {securityActor} from '../security/guards';
 import { encryptPushAuth } from './push-crypto';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -256,7 +257,8 @@ export const personalFinanceRoutes = new Elysia()
     const host=endpoint.hostname.toLowerCase();
     const trustedPushHost=['fcm.googleapis.com','updates.push.services.mozilla.com','push.services.mozilla.com','web.push.apple.com'];
     if(endpoint.protocol!=='https:'||!trustedPushHost.some((domain)=>host===domain||host.endsWith(`.${domain}`)))return fail(422,'This browser push provider is not supported.');
-    await q(tx,'insert into push_subscriptions(workspace_id,user_id,endpoint,p256dh,auth,updated_at) values($1,$2,$3,$4,$5,now()) on conflict(workspace_id,user_id,endpoint) do update set p256dh=excluded.p256dh,auth=excluded.auth,updated_at=now()',[params.workspaceId,userId,endpoint.toString(),body.keys.p256dh,encryptPushAuth(body.keys.auth)]);
+    const device=(await securityActor(request)).state.device_id;
+    await q(tx,'insert into push_subscriptions(workspace_id,user_id,endpoint,p256dh,auth,updated_at,security_device_id) values($1,$2,$3,$4,$5,now(),$6) on conflict(workspace_id,user_id,endpoint) do update set p256dh=excluded.p256dh,auth=excluded.auth,updated_at=now(),security_device_id=excluded.security_device_id',[params.workspaceId,userId,endpoint.toString(),body.keys.p256dh,encryptPushAuth(body.keys.auth,{workspaceId:params.workspaceId,userId,endpoint:endpoint.toString()}),device]);
     return new Response(null,{status:204});
   }))
   .delete('/api/workspaces/:workspaceId/push-subscriptions',async({request,params})=>scoped(request,params.workspaceId,async(tx,userId)=>{

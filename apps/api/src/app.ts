@@ -2,6 +2,9 @@ import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { openapi } from '@elysiajs/openapi';
 import { auth } from './auth';
+import { securityGuard, securityActor, consumeGrant, SecurityError } from './security/guards';
+import { privacyRoutes } from './privacy/routes';
+import { securityRoutes } from './security/routes';
 import { guardAuthRequest } from './auth/rate-limit';
 import { trackingRoutes } from './tracking/routes';
 import { personalFinanceRoutes } from './personal-finance/routes';
@@ -28,6 +31,10 @@ export function clientIpForRequest(request: Request, socketIp: string | undefine
 export const app = new Elysia()
   .use(cors({ origin: webOrigin, credentials: true }))
   .use(openapi())
+  .onAfterHandle({as:'global'},({set,request})=>{if(new URL(request.url).pathname.startsWith('/api/')){set.headers['Cache-Control']='no-store';set.headers['X-Content-Type-Options']='nosniff';}})
+  .onBeforeHandle({ as: 'global' }, ({request,server}) => {request.headers.set('x-capybudget-trusted-ip',clientIpForRequest(request,server?.requestIP(request)?.address));return securityGuard(request);})
+  .use(securityRoutes)
+  .use(privacyRoutes)
   .use(trackingRoutes)
   .use(notificationRoutes)
   .use(personalFinanceRoutes)
@@ -38,6 +45,15 @@ export const app = new Elysia()
     const ip = clientIpForRequest(request, server?.requestIP(request)?.address);
     const limited = await guardAuthRequest(request, ip);
     if (limited) return limited;
+    const path=new URL(request.url).pathname;
+    try {
+      const sensitive=new Set(['/api/auth/two-factor/enable','/api/auth/two-factor/disable','/api/auth/two-factor/generate-backup-codes','/api/auth/two-factor/get-totp-uri']);
+      if(sensitive.has(path)) await consumeGrant(request,'factor');
+      if(!['/api/auth/get-session','/api/auth/sign-out'].includes(path)) {
+        const current=await auth.api.getSession({headers:request.headers});
+        if(current?.user.emailVerified){const actor=await securityActor(request);if(actor.locked)throw new SecurityError(423,'Unlock this browser first.');}
+      }
+    }catch(error){if(error instanceof SecurityError)return Response.json({message:error.message},{status:error.status});throw error;}
     const trustedRequest = new Request(request, { headers: new Headers(request.headers) });
     trustedRequest.headers.set('x-forwarded-for', ip);
     return auth.handler(trustedRequest);

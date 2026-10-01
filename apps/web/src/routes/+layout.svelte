@@ -7,8 +7,10 @@
   setContext(AUTH_UI_CONTEXT, authUi);
 
   onMount(() => {
-    authUi.locale = getLocale(localStorage.getItem('capybudget-locale'));
-    authUi.dark = localStorage.getItem('capybudget-theme') === 'dark';
+    try {
+      authUi.locale = getLocale(localStorage.getItem('capybudget-locale'));
+      authUi.dark = localStorage.getItem('capybudget-theme') === 'dark';
+    } catch { /* Preferences stay in memory when browser storage is unavailable. */ }
     document.documentElement.classList.toggle('dark', authUi.dark);
   });
 </script>

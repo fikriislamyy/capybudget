@@ -1,0 +1,12 @@
+ALTER TABLE "user" ADD COLUMN two_factor_enabled boolean NOT NULL DEFAULT false;
+ALTER TABLE "user" ADD COLUMN account_status text NOT NULL DEFAULT 'active';
+ALTER TABLE "user" ADD COLUMN security_version integer NOT NULL DEFAULT 1;
+CREATE TABLE two_factor (id text PRIMARY KEY, user_id text NOT NULL UNIQUE REFERENCES "user"(id) ON DELETE CASCADE, secret text NOT NULL, backup_codes text NOT NULL, verified boolean NOT NULL DEFAULT false, failed_verification_count integer NOT NULL DEFAULT 0, locked_until timestamptz);
+CREATE TABLE security_devices (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,label text NOT NULL,pin_hash text,lock_enabled boolean NOT NULL DEFAULT false,failures integer NOT NULL DEFAULT 0,cooldown_until timestamptz,created_at timestamptz NOT NULL DEFAULT now(),revoked_at timestamptz);
+CREATE TABLE session_security (session_id text PRIMARY KEY REFERENCES session(id) ON DELETE CASCADE,user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,device_id uuid NOT NULL REFERENCES security_devices(id) ON DELETE CASCADE,locked_at timestamptz,unlocked_until timestamptz,last_activity_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE security_challenges (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),session_id text NOT NULL REFERENCES session(id) ON DELETE CASCADE,purpose text NOT NULL,value text NOT NULL,security_version integer NOT NULL,expires_at timestamptz NOT NULL,consumed_at timestamptz);
+CREATE TABLE webauthn_credentials (id text PRIMARY KEY,device_id uuid NOT NULL REFERENCES security_devices(id) ON DELETE CASCADE,public_key text NOT NULL,counter bigint NOT NULL DEFAULT 0,transports jsonb NOT NULL DEFAULT '[]',created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE security_events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id text REFERENCES "user"(id) ON DELETE CASCADE,action text NOT NULL,outcome text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE factor_replays (digest text PRIMARY KEY,expires_at timestamptz NOT NULL);
+CREATE INDEX security_devices_user_idx ON security_devices(user_id);
+CREATE INDEX security_challenges_expiry_idx ON security_challenges(expires_at);

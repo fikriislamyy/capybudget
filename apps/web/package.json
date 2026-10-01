@@ -11,6 +11,7 @@
   "dependencies": {
     "@capybudget/api": "workspace:*",
     "@elysiajs/eden": "latest",
+    "@simplewebauthn/browser": "^14.0.0",
     "@sveltejs/adapter-auto": "latest",
     "@sveltejs/kit": "latest",
     "@sveltejs/vite-plugin-svelte": "latest",
@@ -20,16 +21,18 @@
     "bits-ui": "^2.18.0",
     "echarts": "latest",
     "lucide-svelte": "latest",
+    "qrcode": "^1.5.4",
     "tailwindcss": "latest",
     "vite": "latest",
     "vite-plugin-pwa": "latest"
   },
   "devDependencies": {
-    "@playwright/test": "latest",
     "@fontsource-variable/fredoka": "latest",
     "@fontsource-variable/nunito-sans": "latest",
     "@lucide/svelte": "^1.48.0",
+    "@playwright/test": "latest",
     "@types/node": "latest",
+    "@types/qrcode": "^1.5.6",
     "@typescript/native": "npm:typescript@^7.0.0",
     "cn": "^0.4.0",
     "postgres": "latest",

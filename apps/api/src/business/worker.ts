@@ -1,3 +1,4 @@
+import {revealRow} from '../security/business-fields';
 import { client } from '../db';
 import { enqueueEmail } from '../email/queue';
 import { getAttachment } from '../tracking/storage';
@@ -13,7 +14,8 @@ export async function dispatchInvoiceDeliveries(){
      await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[ws.owner_user_id,ws.id]);
      return tx.unsafe("with pending as (select d.id from invoice_deliveries d join invoices i on i.workspace_id=d.workspace_id and i.id=d.invoice_id where d.workspace_id=$1 and i.state='issued' and ((d.state in ('pending','failed') and d.next_attempt_at<=now()) or (d.state='queued' and d.lease_until<now())) order by d.created_at for update of d skip locked limit 25) update invoice_deliveries d set state='queued',lease_until=now()+interval '3 minutes',updated_at=now() from pending p where d.id=p.id returning d.id,d.workspace_id,d.requested_by,d.recipient_snapshot,d.locale,d.invoice_id,d.purpose,d.reminder_message_snapshot",[ws.id]);
     });
-    for(const d of due){
+    for(const raw of due){
+     const d=revealRow(raw,ws.id);
      try{
       const [inv]=await client.unsafe('select number from invoices where workspace_id=$1 and id=$2',[ws.id,d.invoice_id]);
       if(d.purpose==='reminder')await enqueueEmail({kind:'invoice-reminder',to:d.recipient_snapshot,invoiceNumber:inv.number,reminderMessage:d.reminder_message_snapshot,workspaceId:d.workspace_id,deliveryId:d.id,requestedBy:d.requested_by,locale:d.locale,expiresAt:Date.now()+7*86400000},'invoice-reminder-'+d.id);
@@ -30,7 +32,8 @@ export async function dispatchInvoiceDeliveries(){
 export async function loadInvoiceDelivery(message:Extract<EmailMessage,{kind:'invoice-delivery'}>){
  return client.begin(async tx=>{
   await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[message.requestedBy,message.workspaceId]);
-  const [d]=await tx.unsafe("select d.id,d.state,d.recipient_snapshot,d.locale,d.document_id,i.number,i.state as invoice_state,b.object_key from invoice_deliveries d join workspace_memberships m on m.workspace_id=d.workspace_id and m.user_id=d.requested_by join invoices i on i.workspace_id=d.workspace_id and i.id=d.invoice_id join business_documents b on b.workspace_id=d.workspace_id and b.id=d.document_id where d.workspace_id=$1 and d.id=$2 and d.requested_by=$3 and b.state='ready' for update of d",[message.workspaceId,message.deliveryId,message.requestedBy]);
+  const [raw]=await tx.unsafe("select d.id,d.state,d.recipient_snapshot,d.locale,d.document_id,i.number,i.state as invoice_state,b.object_key from invoice_deliveries d join workspace_memberships m on m.workspace_id=d.workspace_id and m.user_id=d.requested_by join invoices i on i.workspace_id=d.workspace_id and i.id=d.invoice_id join business_documents b on b.workspace_id=d.workspace_id and b.id=d.document_id where d.workspace_id=$1 and d.id=$2 and d.requested_by=$3 and b.state='ready' for update of d",[message.workspaceId,message.deliveryId,message.requestedBy]);
+  const d=raw?revealRow(raw,message.workspaceId):undefined;
   if(!d||d.state==='cancelled'||d.state==='accepted'||d.invoice_state==='void')return null;
   await tx.unsafe("update invoice_deliveries set state='sending',attempts=attempts+1,lease_until=now()+interval '2 minutes',updated_at=now() where workspace_id=$1 and id=$2",[message.workspaceId,message.deliveryId]);
   return {to:d.recipient_snapshot,locale:d.locale,number:d.number,objectKey:d.object_key};
@@ -67,7 +70,7 @@ export async function sendInvoiceReminder(message:Extract<EmailMessage,{kind:'in
     where d.workspace_id=$1 and d.id=$2 and d.requested_by=$3 and d.purpose='reminder' for update of d`,[message.workspaceId,message.deliveryId,message.requestedBy]);
   if(!row||['cancelled','accepted'].includes(row.state)||row.invoice_state!=='issued'||!row.has_outstanding){if(row&&row.state!=='accepted')await tx.unsafe("update invoice_deliveries set state='cancelled',updated_at=now() where workspace_id=$1 and id=$2",[message.workspaceId,message.deliveryId]);return null;}
   await tx.unsafe("update invoice_deliveries set state='sending',attempts=attempts+1,lease_until=now()+interval '2 minutes',updated_at=now() where workspace_id=$1 and id=$2",[message.workspaceId,message.deliveryId]);
-  return {to:row.recipient_snapshot,locale:row.locale,number:row.number,message:row.reminder_message_snapshot};
+  const decrypted=revealRow(row,message.workspaceId);return {to:decrypted.recipient_snapshot,locale:row.locale,number:row.number,message:decrypted.reminder_message_snapshot};
  });
  if(!delivery)return false;
  const {sendEmail}=await import('../email/mailer');await sendEmail({...message,to:delivery.to,invoiceNumber:delivery.number,reminderMessage:delivery.message,locale:delivery.locale});

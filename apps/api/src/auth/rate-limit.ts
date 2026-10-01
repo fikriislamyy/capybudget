@@ -52,7 +52,8 @@ export function buildRateLimitBuckets(path: string, email: string | undefined, i
     if (emailKey) buckets.push({ key: 'email:' + name + ':' + emailKey, limit, seconds });
   };
 
-  if (path === '/sign-up/email') {
+  if (path.startsWith('/two-factor/')) { addIp('second-factor', 20, 900); }
+  else if (path === '/sign-up/email') {
     addIp('signup', 5, 900);
     addEmail('verification:window', 3, 900);
     addEmail('verification:cooldown', 1, 60);

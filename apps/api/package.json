@@ -31,6 +31,8 @@
     "@aws-sdk/lib-storage": "latest",
     "@elysiajs/cors": "latest",
     "@elysiajs/openapi": "latest",
+    "@simplewebauthn/server": "^14.0.3",
+    "archiver": "^8.0.0",
     "better-auth": "latest",
     "bullmq": "latest",
     "drizzle-orm": "latest",
@@ -43,6 +45,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/bun": "latest",
     "@types/nodemailer": "latest",
     "@types/web-push": "^3.6.4",
