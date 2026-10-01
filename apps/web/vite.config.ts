@@ -15,6 +15,7 @@ export default defineConfig({
       navigateFallbackDenylist: [
         /^\/api\//,
         /^\/dashboard(?:\/|$)/,
+        /^\/onboarding(?:\/|$)/,
         /^\/(?:login|sign-up|verify-email|forgot-password|reset-password)(?:\/|$)/
       ]
     },

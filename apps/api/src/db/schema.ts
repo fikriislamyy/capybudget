@@ -512,3 +512,21 @@ export const backupRuns = pgTable('backup_runs', {
 export const backupRestoreChecks = pgTable('backup_restore_checks', {
  id:uuid('id').defaultRandom().primaryKey(),backupId:uuid('backup_id').notNull(),outcome:text('outcome').notNull(),durationMs:integer('duration_ms').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()
 });
+export const userPreferences = pgTable('user_preferences', {
+ userId:text('user_id').primaryKey().references(()=>user.id,{onDelete:'cascade'}),
+ theme:text('theme',{enum:['light','dark','system']}).notNull().default('system'),
+ locale:text('locale',{enum:['en','id']}).notNull().default('en'),
+ customized:boolean('customized').notNull().default(false),
+ updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow()
+});
+export const onboardingState = pgTable('onboarding_state', {
+ userId:text('user_id').primaryKey().references(()=>user.id,{onDelete:'cascade'}),
+ usageType:text('usage_type',{enum:['personal','business','both']}),
+ currency:varchar('currency',{length:3}).notNull().default('IDR'),
+ language:text('language',{enum:['en','id']}).notNull().default('en'),
+ currentStep:text('current_step').notNull().default('usage'),
+ firstWorkspaceId:uuid('first_workspace_id'),
+ completedAt:timestamp('completed_at',{withTimezone:true}),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+ updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow()
+});

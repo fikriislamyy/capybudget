@@ -1,7 +1,10 @@
 <script lang="ts">
   import { getContext, onMount, setContext } from 'svelte';
   import { goto, invalidateAll } from '$app/navigation';
+  import { page } from '$app/state';
   import { authClient } from '$lib/auth-client';
+  import QuickAddSheet from '$lib/components/ux/quick-add-sheet.svelte';
+  import { applyThemeChoice, persistPreferences } from '$lib/theme';
   import { AUTH_UI_CONTEXT, type AuthUiState } from '$lib/i18n/auth';
   import { trackingText } from '$lib/i18n/tracking';
   import { financeText } from '$lib/i18n/finance';
@@ -25,7 +28,29 @@
   setContext('capybudget-workspaces',workspaceState);
   const privacyState:PrivacyState=$state({hidden:true});setContext(PRIVACY_CONTEXT,privacyState);
   let online=$state(true);onMount(()=>{const update=()=>online=navigator.onLine;update();window.addEventListener('online',update);window.addEventListener('offline',update);return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};});
-  let signingOut=$state(false),securityReady=$state(false),lockEnabled=$state(false);
+  let signingOut=$state(false),securityReady=$state(false),lockEnabled=$state(false),quickAddOpen=$state(false);
+  async function syncPreferences(){
+    try{
+      const r=await fetch('/api/preferences',{credentials:'same-origin'});
+      if(!r.ok)return;
+      const prefs=await r.json();
+      if(prefs.customized){
+        if(prefs.theme==='light'||prefs.theme==='dark'||prefs.theme==='system'){authUi.theme=prefs.theme;authUi.dark=applyThemeChoice(prefs.theme);}
+        if(prefs.locale==='en'||prefs.locale==='id'){authUi.locale=prefs.locale;document.documentElement.lang=prefs.locale;try{localStorage.setItem('capybudget-locale',prefs.locale);}catch{}}
+      }else void persistPreferences(authUi.theme,authUi.locale);
+    }catch{/* Local preferences stand in when sync fails. */}
+  }
+  async function guardOnboarding(){
+    try{
+      const r=await fetch('/api/onboarding',{credentials:'same-origin'});
+      if(!r.ok)return true;
+      const state=await r.json();
+      const onWizard=page.url.pathname==='/onboarding';
+      if(!state.completed&&!onWizard){await goto('/onboarding');return false;}
+      if(state.completed&&onWizard){await goto('/dashboard');return false;}
+      return true;
+    }catch{return true;}
+  }
   async function checkSecurity(){let r:Response;try{r=await fetch('/api/security/status',{cache:'no-store'});}catch{if(lockEnabled)securityReady=false;return false;}if(!r.ok){securityReady=false;await goto('/login',{invalidateAll:true});return false;}const status=await r.json();privacyState.hidden=configurePrivacyMode(data.user.id,status.privacyDefault);privacyMode=privacyState.hidden;lockEnabled=status.lockEnabled;if(status.locked){securityReady=false;await goto('/unlock',{invalidateAll:true});return false;}securityReady=true;return true;}
   onMount(()=>{const channel=new BroadcastChannel('capybudget-security');const conceal=()=>{if(!lockEnabled)return;securityReady=false;notices=[];channel.postMessage('locked');navigator.sendBeacon('/api/security/lock');void fetch('/api/security/lock',{method:'POST'});};const visibility=()=>{if(document.visibilityState==='hidden')conceal();else void checkSecurity();};let lastActivity=0;const activity=(event:Event)=>{if(!event.isTrusted||!securityReady||!lockEnabled||Date.now()-lastActivity<30_000)return;lastActivity=Date.now();void fetch('/api/security/activity',{method:'POST'}).catch(()=>{});};document.addEventListener('pointerdown',activity);document.addEventListener('keydown',activity);channel.onmessage=e=>{if(e.data==='locked'){securityReady=false;void goto('/unlock',{invalidateAll:true});}if(e.data==='logout')void goto('/login',{invalidateAll:true});};document.addEventListener('visibilitychange',visibility);window.addEventListener('pagehide',conceal);const timer=window.setInterval(()=>void checkSecurity(),30_000);return()=>{channel.close();clearInterval(timer);document.removeEventListener('pointerdown',activity);document.removeEventListener('keydown',activity);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('pagehide',conceal);};});
   type Notice={id:string;kind:string;messageKey:string;messageParams:Record<string,unknown>;title:string;message:string;readAt:string|null};
@@ -35,6 +60,8 @@
   onMount(async()=>{
     try{
       if(!await checkSecurity())return;
+      await syncPreferences();
+      if(!await guardOnboarding())return;
       const response=await fetch('/api/workspaces',{credentials:'same-origin'});
       if(!response.ok)throw new Error('Unable to load your workspaces.');
       workspaceState.items=(await response.json()).items;
@@ -88,7 +115,7 @@
     {#if showWorkspaceForm}<form class="workspace-form" onsubmit={createWorkspace}><label for="workspace-name">Business name</label><input id="workspace-name" bind:value={workspaceName} maxlength="100" required placeholder="Studio or shop"/><label for="workspace-currency">Currency</label><input id="workspace-currency" bind:value={workspaceCurrency} maxlength="3" required/><label for="workspace-timezone">Timezone</label><input id="workspace-timezone" bind:value={workspaceTimezone} required/><Button size="sm" type="submit" disabled={creatingWorkspace}>{creatingWorkspace?'Creating…':'Create workspace'}</Button></form>{/if}
     {#if workspaceState.error}<p class="load-error" role="alert">{workspaceState.error}</p>{/if}
     <nav aria-label="Main navigation">
-      <a href="/dashboard">{t('overview')}</a><a href="/reports">{authUi.locale==='id'?'Laporan':'Reports'}</a><a href="/assistant">AI Assistant</a><a href="/transactions">{t('transactions')}</a><a href="/accounts">{t('accounts')}</a><a href="/categories">{t('categories')}</a><a href="/recurring">{t('recurring')}</a><a href="/budgets">{financeText(authUi.locale,'budgets')}</a><a href="/goals">{financeText(authUi.locale,'goals')}</a><a href="/bills">{financeText(authUi.locale,'bills')}</a><a href="/notifications">{authUi.locale==='id'?'Pemberitahuan':'Notifications'}{unreadCount?` (${unreadCount})`:''}</a><a href="/settings/security">{authUi.locale==='id'?'Keamanan':'Security'}</a><a href="/settings/privacy">{authUi.locale==='id'?'Privasi':'Privacy'}</a><a href="/settings/notifications">{authUi.locale==='id'?'Pengaturan pemberitahuan':'Notification settings'}</a>
+      <a href="/dashboard">{t('overview')}</a><a href="/reports">{authUi.locale==='id'?'Laporan':'Reports'}</a><a href="/assistant">AI Assistant</a><a href="/transactions">{t('transactions')}</a><a href="/accounts">{t('accounts')}</a><a href="/categories">{t('categories')}</a><a href="/recurring">{t('recurring')}</a><a href="/budgets">{financeText(authUi.locale,'budgets')}</a><a href="/goals">{financeText(authUi.locale,'goals')}</a><a href="/bills">{financeText(authUi.locale,'bills')}</a><a href="/notifications">{authUi.locale==='id'?'Pemberitahuan':'Notifications'}{unreadCount?` (${unreadCount})`:''}</a><a href="/settings/appearance">{authUi.locale==='id'?'Tampilan':'Appearance'}</a><a href="/settings/security">{authUi.locale==='id'?'Keamanan':'Security'}</a><a href="/settings/privacy">{authUi.locale==='id'?'Privasi':'Privacy'}</a><a href="/settings/notifications">{authUi.locale==='id'?'Pengaturan pemberitahuan':'Notification settings'}</a>
       {#if activeWorkspace?.kind==='business'}<a href="/invoices">Invoices</a><a href="/business/settings">Business profile</a>{/if}
     </nav>
     <div class="sidebar-bottom"><span class="profile-avatar">{data.user.name.slice(0,1).toUpperCase()}</span><span class="profile-name">{data.user.name}</span><Button variant="ghost" size="sm" onclick={signOut} disabled={signingOut}>{signingOut?'…':t('signOut')}</Button></div>
@@ -98,6 +125,10 @@
     <section class="page-content">{#if !online}<p role="status" class="rounded-md border p-3">{authUi.locale==='id'?'Anda sedang luring. Perubahan tidak dapat disimpan.':'You are offline. Changes cannot be saved.'}</p>{/if}{@render children?.()}</section>
   </main>
 </div>
+{#if securityReady&&workspaceState.selectedId&&!['/transactions','/onboarding'].includes(page.url.pathname)}
+  <button type="button" class="fab" onclick={()=>quickAddOpen=true} aria-label={t('quickAdd')}>+</button>
+  <QuickAddSheet open={quickAddOpen} workspaceId={workspaceState.selectedId} onClose={()=>quickAddOpen=false} onSaved={()=>workspaceState.revision++} />
+{/if}
 
 {:else}<p role="status" class="p-6">{authUi.locale==='id'?'Memeriksa keamanan…':'Checking security…'}</p>{/if}
 <style>
@@ -113,5 +144,8 @@
   .page-content{width:min(1120px,100%);margin:auto;padding:32px clamp(16px,4vw,56px) 64px}.load-error{color:var(--destructive);font-size:13px}select{width:100%;min-height:40px;border:1px solid var(--input);border-radius:var(--radius);background:var(--background);color:var(--foreground);padding:8px 10px}
   @media(max-width:760px){.app-shell{grid-template-columns:1fr}.sidebar{height:auto;position:relative;padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:10px}.sidebar>:global([data-slot=field]){grid-column:1/-1}.sidebar nav{grid-column:1/-1;display:flex;overflow:auto;margin:0}.sidebar nav a{white-space:nowrap}.sidebar-bottom{display:none}.topbar{height:54px}.page-content{padding-top:24px}}
   :global(.topbar button){min-height:44px}.top-actions{flex-wrap:wrap;min-width:0}.main-area{min-width:0}
+  .fab{position:fixed;right:22px;bottom:22px;z-index:39;display:grid;place-items:center;width:58px;height:58px;border-radius:50%;border:0;background:var(--primary);color:var(--primary-foreground);font:400 34px/1 'Fredoka Variable',sans-serif;cursor:pointer;box-shadow:0 8px 24px #24190e33}
+  .fab:active{transform:scale(0.94)}
+  @media (prefers-reduced-motion: no-preference){.fab{transition:transform 150ms ease}}
   @media(max-width:600px){.topbar{flex-direction:column;align-items:flex-start;gap:12px;height:auto;padding:16px}.top-actions{width:100%}.notice-panel{position:fixed;left:16px;right:16px;width:auto;max-width:calc(100vw - 32px)}}
 </style>
