@@ -219,6 +219,7 @@ export const budgets = pgTable('budgets', {
   categoryId: uuid('category_id').notNull(), name: text('name').notNull(), cadence: text('cadence', { enum: ['weekly', 'monthly'] }).notNull(),
   amount: numeric('amount', { precision: 19, scale: 4 }).notNull(), currency: varchar('currency', { length: 3 }).notNull(),
   startsOn: date('starts_on').notNull(), alertThresholds: jsonb('alert_thresholds').notNull().default([80, 100]),
+  alertRevision: integer('alert_revision').notNull().default(1),
   createdBy: text('created_by').references(() => user.id), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(), archivedAt: timestamp('archived_at', { withTimezone: true })
 }, (table) => [index('budgets_workspace_idx').on(table.workspaceId), uniqueIndex('budgets_workspace_id_unique').on(table.workspaceId, table.id)]);
@@ -258,25 +259,54 @@ export const billOccurrences = pgTable('bill_occurrences', {
 }, (table) => [uniqueIndex('bill_occurrence_due_unique').on(table.workspaceId, table.billId, table.dueOn), index('bill_occurrence_upcoming_idx').on(table.workspaceId, table.dueOn, table.status)]);
 
 export const financeNotifications = pgTable('finance_notifications', {
-  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
-  userId: text('user_id').notNull().references(() => user.id), kind: text('kind').notNull(), sourceId: uuid('source_id').notNull(),
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }), kind: text('kind').notNull(), sourceId: uuid('source_id').notNull(),
   dedupeKey: text('dedupe_key').notNull(), title: text('title').notNull(), message: text('message').notNull(),
   readAt: timestamp('read_at', { withTimezone: true }), emailSentAt: timestamp('email_sent_at', { withTimezone: true }), pushSentAt: timestamp('push_sent_at', { withTimezone: true }),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }), assistantSuggestionId: uuid('assistant_suggestion_id'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
-}, (table) => [uniqueIndex('finance_notifications_dedupe_unique').on(table.workspaceId, table.userId, table.dedupeKey), index('finance_notifications_user_idx').on(table.userId, table.readAt, table.createdAt), index('finance_notifications_active_idx').on(table.workspaceId, table.userId, table.resolvedAt, table.createdAt)]);
+  sourceType: text('source_type').notNull().default('legacy'), sourceRevision: text('source_revision'), ruleVersion: text('rule_version'),
+  messageKey: text('message_key').notNull().default('legacy'), messageParams: jsonb('message_params').notNull().default({}), evidence: jsonb('evidence').notNull().default({}),
+  severity: text('severity', { enum: ['info','attention','urgent'] }).notNull().default('attention'), actionType: text('action_type'),
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }), snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull().default(sql`now()+interval '90 days'`), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  resolutionReason: text('resolution_reason'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [uniqueIndex('finance_notifications_dedupe_unique').on(table.workspaceId, table.userId, table.dedupeKey), uniqueIndex('finance_notifications_workspace_user_id_unique').on(table.workspaceId,table.userId,table.id), index('finance_notifications_user_idx').on(table.userId, table.readAt, table.createdAt), index('finance_notifications_active_idx').on(table.workspaceId, table.userId, table.resolvedAt, table.createdAt), index('finance_notifications_cursor_idx').on(table.workspaceId,table.userId,table.createdAt,table.id), index('finance_notifications_unread_active_idx').on(table.workspaceId,table.userId,table.createdAt,table.id).where(sql`${table.readAt} IS NULL AND ${table.resolvedAt} IS NULL AND ${table.dismissedAt} IS NULL`)]);
 
 export const financeNotificationPreferences = pgTable('finance_notification_preferences', {
-  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id), userId: text('user_id').notNull().references(() => user.id),
-  eventType: text('event_type').notNull(), channel: text('channel', { enum: ['email','push'] }).notNull(), enabled: boolean('enabled').notNull().default(true),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  eventType: text('event_type').notNull(), channel: text('channel', { enum: ['email','push','in_app'] }).notNull(), enabled: boolean('enabled').notNull().default(true),
+  version: integer('version').notNull().default(1), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => [primaryKey({ columns: [table.workspaceId, table.userId, table.eventType, table.channel] })]);
 
 export const pushSubscriptions = pgTable('push_subscriptions', {
-  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
-  userId: text('user_id').notNull().references(() => user.id), endpoint: text('endpoint').notNull(), p256dh: text('p256dh').notNull(), auth: text('auth').notNull(),
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }), endpoint: text('endpoint').notNull(), p256dh: text('p256dh').notNull(), auth: text('auth').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
-}, (table) => [uniqueIndex('push_subscriptions_endpoint_unique').on(table.workspaceId,table.userId,table.endpoint), index('push_subscriptions_user_idx').on(table.workspaceId,table.userId)]);
+}, (table) => [uniqueIndex('push_subscriptions_endpoint_unique').on(table.workspaceId,table.userId,table.endpoint), uniqueIndex('push_subscriptions_workspace_id_unique').on(table.workspaceId,table.id), index('push_subscriptions_user_idx').on(table.workspaceId,table.userId)]);
+
+export const financeNotificationRules = pgTable('finance_notification_rules', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id,{onDelete:'cascade'}), userId: text('user_id').notNull().references(() => user.id,{onDelete:'cascade'}),
+  ruleType: text('rule_type').notNull(), scopeKey: text('scope_key').notNull(), accountId: uuid('account_id'), categoryId: uuid('category_id'), currency: varchar('currency',{length:3}),
+  enabled: boolean('enabled').notNull().default(false), parameters: jsonb('parameters').notNull().default({}), version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(), updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow()
+},(table)=>[uniqueIndex('finance_notification_rules_scope_unique').on(table.workspaceId,table.userId,table.ruleType,table.scopeKey),uniqueIndex('finance_notification_rules_workspace_id_unique').on(table.workspaceId,table.id),foreignKey({columns:[table.workspaceId,table.accountId],foreignColumns:[accounts.workspaceId,accounts.id]}).onDelete('cascade'),foreignKey({columns:[table.workspaceId,table.categoryId],foreignColumns:[categories.workspaceId,categories.id]}).onDelete('cascade'),index('finance_notification_rules_actor_idx').on(table.workspaceId,table.userId,table.enabled,table.ruleType)]);
+
+export const financeNotificationEvaluationState = pgTable('finance_notification_evaluation_state', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(()=>workspaces.id,{onDelete:'cascade'}), userId: text('user_id').notNull().references(()=>user.id,{onDelete:'cascade'}),
+  ruleKey: text('rule_key').notNull(), scopeKey: text('scope_key').notNull(), periodKey: text('period_key').notNull(), ruleVersion: text('rule_version').notNull().default('1'), sourceVersion: text('source_version'),
+  dirtyVersion: bigint('dirty_version',{mode:'number'}).notNull().default(1), processedVersion: bigint('processed_version',{mode:'number'}).notNull().default(0), cursor: jsonb('cursor'),
+  state: jsonb('state').notNull().default({}), nextEvaluationAt: timestamp('next_evaluation_at',{withTimezone:true}).notNull().defaultNow(), leaseExpiresAt: timestamp('lease_expires_at',{withTimezone:true}),
+  attempts: integer('attempts').notNull().default(0), lastErrorCode: text('last_error_code'), updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow()
+},(table)=>[uniqueIndex('finance_notification_evaluation_scope_unique').on(table.workspaceId,table.userId,table.ruleKey,table.scopeKey,table.periodKey),index('finance_notification_evaluation_due_idx').on(table.nextEvaluationAt,table.leaseExpiresAt).where(sql`${table.dirtyVersion}>${table.processedVersion}`)]);
+
+export const financeNotificationDeliveries = pgTable('finance_notification_deliveries', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(()=>workspaces.id,{onDelete:'cascade'}), userId: text('user_id').notNull().references(()=>user.id,{onDelete:'cascade'}),
+  notificationId: uuid('notification_id').notNull(), channel: text('channel').notNull(), destinationKey: text('destination_key').notNull(), pushSubscriptionId: uuid('push_subscription_id'),
+  generation: integer('generation').notNull().default(1), preferenceVersion: integer('preference_version').notNull().default(1), status: text('status').notNull().default('pending'), attempts: integer('attempts').notNull().default(0),
+  availableAt: timestamp('available_at',{withTimezone:true}).notNull().defaultNow(), expiresAt: timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '7 days'`),
+  leaseExpiresAt: timestamp('lease_expires_at',{withTimezone:true}), sendStartedAt: timestamp('send_started_at',{withTimezone:true}), providerMessageId: text('provider_message_id'), lastErrorCode: text('last_error_code'),
+  acceptedAt: timestamp('accepted_at',{withTimezone:true}), deliveredAt: timestamp('delivered_at',{withTimezone:true}), createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(), updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow()
+},(table)=>[uniqueIndex('finance_notification_deliveries_destination_unique').on(table.workspaceId,table.userId,table.notificationId,table.channel,table.destinationKey,table.generation),uniqueIndex('finance_notification_deliveries_workspace_id_unique').on(table.workspaceId,table.id),foreignKey({columns:[table.workspaceId,table.userId,table.notificationId],foreignColumns:[financeNotifications.workspaceId,financeNotifications.userId,financeNotifications.id]}).onDelete('cascade'),foreignKey({columns:[table.workspaceId,table.pushSubscriptionId],foreignColumns:[pushSubscriptions.workspaceId,pushSubscriptions.id]}).onDelete('cascade'),index('finance_notification_delivery_due_idx').on(table.status,table.availableAt,table.createdAt),index('finance_notification_delivery_lease_idx').on(table.leaseExpiresAt).where(sql`${table.status}='processing'`)]);
 
 export const businessProfiles = pgTable('business_profiles', {
   workspaceId: uuid('workspace_id').primaryKey().references(() => workspaces.id, { onDelete: 'cascade' }),

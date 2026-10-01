@@ -4,6 +4,7 @@ import { client } from '../../src/db';
 import { recoverQueuedAssistantForecasts, refreshStaleAssistantForecasts } from '../../src/assistant/routes';
 import { dispatchInvoiceDeliveries } from '../../src/business/worker';
 import { encryptPushAuth } from '../../src/personal-finance/push-crypto';
+import { sweepNotifications } from '../../src/notifications/scheduler';
 
 const enabled=process.env.TRACKING_INTEGRATION==='1';
 const testDatabaseUrl=process.env.TRACKING_TEST_DATABASE_URL;
@@ -57,6 +58,15 @@ async function waitForAssistantAlert(){
   }
   throw new Error('Mailpit did not receive the opted-in assistant alert');
 }
+async function waitForDeliveryStatus(workspaceId:string,userId:string,sourceId:string,channel:'email'|'push',expected:string){
+  const until=Date.now()+10000;
+  while(Date.now()<until){
+    const status=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[userId,workspaceId]);const [row]=await tx.unsafe("select d.status from finance_notification_deliveries d join finance_notifications n on n.workspace_id=d.workspace_id and n.user_id=d.user_id and n.id=d.notification_id where d.workspace_id=$1 and d.user_id=$2 and n.source_id=$3 and d.channel=$4 order by d.created_at desc limit 1",[workspaceId,userId,sourceId,channel]);return row?.status;});
+    if(status===expected)return status;
+    await Bun.sleep(100);
+  }
+  throw new Error(`Notification delivery did not reach ${expected}`);
+}
 async function waitForInvoiceReminder(invoiceNumber:string,subject=`A payment reminder for your invoice · ${invoiceNumber}`){
   const until=Date.now()+75000;
   while(Date.now()<until){
@@ -73,7 +83,7 @@ async function waitForInvoiceReminder(invoiceNumber:string,subject=`A payment re
 describe('workspace tracking integration',()=>{
   test.skipIf(!enabled)('creates isolated wallets and records income, expense, and transfer balances exactly',async()=>{
       const signup=await post('/api/auth/sign-up/email',{name:'Tracking Test',email,password});
-      expect(signup.ok).toBe(true);
+      expect(signup.ok,await signup.clone().text()).toBe(true);
       const otp=await waitForOtp();
       const verify=await post('/api/auth/email-otp/verify-email',{email,otp});
       expect(verify.ok).toBe(true);
@@ -81,6 +91,7 @@ describe('workspace tracking integration',()=>{
       expect(login.ok).toBe(true);
       const cookie=login.headers.getSetCookie().map(v=>v.split(';',1)[0]).join('; ');
       const headers={cookie};
+      const currentSession=await fetch(api+'/api/auth/get-session',{headers}).then(r=>r.json());
 
       const workspaces=await fetch(api+'/api/workspaces',{headers});
       expect(workspaces.status).toBe(200);
@@ -105,16 +116,111 @@ describe('workspace tracking integration',()=>{
       const expenseResult=await create({type:'expense',accountId:bank.id,categoryId:expenseCategory.id,amount:'100.00',date:'2026-09-02',notes:'Lunch',tagIds:[tag.id]},crypto.randomUUID());
       expect(expenseResult.status).toBe(201);
       const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta'}).format(new Date());
+      const reminderNow=new Date(today+'T02:00:00.000Z');
       const budget=await post('/api/workspaces/'+personal.id+'/budgets',{name:'Food month',categoryId:expenseCategory.id,amount:'1000.00',cadence:'monthly',startsOn:today.slice(0,7)+'-01'},cookie);
       expect(budget.status).toBe(201);
+      const budgetId=(await budget.json()).budget.id;
       const budgetSpend=await create({type:'expense',accountId:bank.id,categoryId:expenseCategory.id,amount:'800.00',date:today,notes:'Market'},crypto.randomUUID());
       expect(budgetSpend.status).toBe(201);
       const budgetView=await fetch(api+'/api/workspaces/'+personal.id+'/budgets',{headers}).then(r=>r.json());
-      expect(budgetView.items[0].spent).toBe('900.0000');
-      expect(budgetView.items[0].remaining).toBe('100.0000');
-      expect(budgetView.items[0].usedPercent).toBe(90);
-      const notices=await fetch(api+'/api/workspaces/'+personal.id+'/notifications',{headers}).then(r=>r.json());
-      expect(notices.items.some((n:any)=>n.kind==='budget-alert')).toBe(true);
+      expect(budgetView.items[0].spent).toBe('800.0000');
+      expect(budgetView.items[0].remaining).toBe('200.0000');
+      expect(budgetView.items[0].usedPercent).toBe(80);
+      await sweepNotifications(reminderNow);
+      const unread=await fetch(api+'/api/workspaces/'+personal.id+'/notifications/unread-count',{headers});
+      expect(unread.status).toBe(200);expect((await unread.json()).count).toBeGreaterThan(0);
+      await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);await tx.unsafe("insert into finance_notifications(workspace_id,user_id,kind,source_id,source_type,dedupe_key,title,message,message_key,evidence,severity,created_at) select $1,$2,'pagination-fixture',$3,'account','pagination-fixture:'||n,'Fixture','Fixture','test.fixture',jsonb_build_object('fixture','issue12-pagination-test'),'info',now()-interval '1 day' from generate_series(1,101) n",[personal.id,currentSession.user.id,bank.id]);});
+      const manyUnread=await fetch(api+'/api/workspaces/'+personal.id+'/notifications/unread-count',{headers}).then(r=>r.json());expect(manyUnread.count).toBeGreaterThanOrEqual(101);
+      const pagedIds:string[]=[];let fixtureCursor:string|null=null;do{const params=new URLSearchParams({state:'all',type:'pagination-fixture',limit:'50'});if(fixtureCursor)params.set('cursor',fixtureCursor);const page=await fetch(api+'/api/workspaces/'+personal.id+'/notifications?'+params,{headers}).then(r=>r.json());expect(page.items.length).toBeGreaterThan(0);pagedIds.push(...page.items.map((item:any)=>item.id));fixtureCursor=page.nextCursor;}while(fixtureCursor);
+      expect(pagedIds).toHaveLength(101);expect(new Set(pagedIds).size).toBe(101);
+      const readAllCutoff=new Date(Date.now()-12*60*60*1000).toISOString();expect((await post('/api/workspaces/'+personal.id+'/notifications/read-all',{before:readAllCutoff},cookie)).status).toBe(200);expect((await post('/api/workspaces/'+personal.id+'/notifications/read-all',{before:readAllCutoff},cookie)).status).toBe(200);
+      await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);await tx.unsafe("delete from finance_notifications where workspace_id=$1 and user_id=$2 and kind='pagination-fixture' and evidence->>'fixture'='issue12-pagination-test'",[personal.id,currentSession.user.id]);});
+      const expiredNotificationId=crypto.randomUUID();await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.notification_worker','true',true),set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);await tx.unsafe("insert into finance_notifications(id,workspace_id,user_id,kind,source_id,source_type,dedupe_key,title,message,message_key,evidence,severity,expires_at) values($1,$2,$3,'retention-fixture',$4,'account',$5,'Expired fixture','Expired fixture','test.expired','{}'::jsonb,'info',now()-interval '1 day')",[expiredNotificationId,personal.id,currentSession.user.id,bank.id,'retention-fixture:'+expiredNotificationId]);await tx.unsafe("insert into finance_notification_deliveries(workspace_id,user_id,notification_id,channel,destination_key,status) values($1,$2,$3,'email',$4,'pending')",[personal.id,currentSession.user.id,expiredNotificationId,'email:'+currentSession.user.id]);});await sweepNotifications(reminderNow);
+      const expiredRows=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.notification_worker','true',true),set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);const [row]=await tx.unsafe('select (select count(*)::int from finance_notifications where workspace_id=$1 and user_id=$2 and id=$3) as notifications,(select count(*)::int from finance_notification_deliveries where workspace_id=$1 and user_id=$2 and notification_id=$3) as deliveries',[personal.id,currentSession.user.id,expiredNotificationId]);return row;});expect(expiredRows).toEqual({notifications:0,deliveries:0});
+      const ruleSave=await fetch(api+'/api/workspaces/'+personal.id+'/notification-rules',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({ruleType:'low_balance',accountId:bank.id,threshold:'650',enabled:true})});
+      expect(ruleSave.status).toBe(200);
+      const savedRule=(await ruleSave.json()).rule;const updatedRule=await fetch(api+'/api/workspaces/'+personal.id+'/notification-rules',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({ruleType:'low_balance',accountId:bank.id,threshold:'650',enabled:true,version:savedRule.version})});expect(updatedRule.status).toBe(200);const updatedRuleBody=await updatedRule.json();expect(updatedRuleBody.rule.version).toBe(savedRule.version+1);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-rules',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({ruleType:'low_balance',accountId:bank.id,threshold:'651',enabled:true,version:savedRule.version})})).status).toBe(409);
+      const currentPreferences=await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{headers}).then(r=>r.json());const disabledUnusual=await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({version:currentPreferences.version,channels:{'unusual-spending':{in_app:false}}})});expect(disabledUnusual.status).toBe(200);const disabledPreferences=await disabledUnusual.json();
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({version:currentPreferences.version,channels:{'unusual-spending':{in_app:true}}})})).status).toBe(409);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({version:disabledPreferences.version,channels:{'unusual-spending':{in_app:true}}})})).status).toBe(200);
+      const unusualRule=await fetch(api+'/api/workspaces/'+personal.id+'/notification-rules',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({ruleType:'unusual_spending',categoryId:expenseCategory.id,currency:'IDR',minimumAmount:'100',enabled:true})});
+      expect(unusualRule.status).toBe(200);
+      await sweepNotifications(reminderNow);
+      const evaluated=await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread',{headers}).then(r=>r.json());
+      expect(evaluated.items.some((n:any)=>n.kind==='recorded-low-balance')).toBe(true);
+      expect(evaluated.items.some((n:any)=>n.kind==='budget-alert')).toBe(true);
+      expect(evaluated.items.some((n:any)=>n.kind==='unusual-spending')).toBe(false); // Insufficient history cannot raise an anomaly.
+      const weekStartDate=new Date(today+'T00:00:00Z');weekStartDate.setUTCDate(weekStartDate.getUTCDate()-((weekStartDate.getUTCDay()+6)%7));const weekStart=weekStartDate.toISOString().slice(0,10);
+      const zeroBudget=await post('/api/workspaces/'+personal.id+'/budgets',{name:'No dining spend',categoryId:expenseCategory.id,amount:'0',cadence:'weekly',startsOn:weekStart},cookie);
+      expect(zeroBudget.status).toBe(201);
+      const zeroBudgetId=(await zeroBudget.json()).budget.id;
+      const zeroBudgetView=await fetch(api+'/api/workspaces/'+personal.id+'/budgets',{headers}).then(r=>r.json());
+      expect(zeroBudgetView.items.find((item:any)=>item.id===zeroBudgetId)?.usedPercent).toBe(null);
+      await sweepNotifications(reminderNow);
+      const withZeroBudget=await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread',{headers}).then(r=>r.json());
+      expect(withZeroBudget.items.some((n:any)=>n.kind==='budget-alert'&&n.messageKey==='budget.zero')).toBe(true);
+      const budgetNotice=evaluated.items.find((n:any)=>n.kind==='budget-alert');
+      const readNotice=await fetch(api+'/api/workspaces/'+personal.id+'/notifications/'+budgetNotice.id+'/read',{method:'PATCH',headers});
+      expect(readNotice.status).toBe(200);
+      const readNoticeBody=await readNotice.json();const repeatedRead=await fetch(api+'/api/workspaces/'+personal.id+'/notifications/'+budgetNotice.id+'/read',{method:'PATCH',headers}).then(r=>r.json());expect(repeatedRead.readAt).toBe(readNoticeBody.readAt);
+      const snoozeUntil=new Date(Date.now()+3600000).toISOString();const lowBalanceNotice=evaluated.items.find((n:any)=>n.kind==='recorded-low-balance');const snoozed=await fetch(api+'/api/workspaces/'+personal.id+'/notifications/'+lowBalanceNotice.id+'/snooze',{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({until:snoozeUntil})});
+      expect(snoozed.status).toBe(200);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications/'+lowBalanceNotice.id+'/snooze',{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({until:snoozeUntil})})).status).toBe(200);
+      const dismissed=await fetch(api+'/api/workspaces/'+personal.id+'/notifications/'+budgetNotice.id+'/dismiss',{method:'PATCH',headers});
+      expect(dismissed.status).toBe(200);
+      const dismissedBody=await dismissed.json();const repeatedDismiss=await fetch(api+'/api/workspaces/'+personal.id+'/notifications/'+budgetNotice.id+'/dismiss',{method:'PATCH',headers}).then(r=>r.json());expect(repeatedDismiss.dismissedAt).toBe(dismissedBody.dismissedAt);
+      const raiseBudget=await fetch(api+'/api/workspaces/'+personal.id+'/budgets/'+budgetId,{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({amount:'2000.00'})});
+      expect(raiseBudget.status).toBe(200);await sweepNotifications(reminderNow);
+      const restoreBudget=await fetch(api+'/api/workspaces/'+personal.id+'/budgets/'+budgetId,{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({amount:'1000.00'})});
+      expect(restoreBudget.status).toBe(200);await sweepNotifications(reminderNow);
+      const budgetReopened=await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread',{headers}).then(r=>r.json());
+      const revisedBudgetNotice=budgetReopened.items.find((n:any)=>n.kind==='budget-alert'&&n.sourceId===budgetId);
+      expect(revisedBudgetNotice).toBeDefined();expect(revisedBudgetNotice.id).not.toBe(budgetNotice.id);expect(revisedBudgetNotice.evidence.budgetAmount).toBe('1000.0000');
+      const resolvedBudgetAlerts=await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=resolved',{headers}).then(r=>r.json());
+      expect(resolvedBudgetAlerts.items.some((n:any)=>n.kind==='budget-alert'&&n.sourceId===budgetId)).toBe(true);
+      const anomalyIds:string[]=[];
+      for(let offset=0;offset<10;offset++){const d=new Date(today+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-50+offset);const row=await create({type:'expense',accountId:bank.id,categoryId:expenseCategory.id,amount:'10.00',date:d.toISOString().slice(0,10),notes:'Anomaly baseline '+offset},crypto.randomUUID());expect(row.status).toBe(201);anomalyIds.push((await row.json()).id);}
+      const anomalyCandidate=await create({type:'expense',accountId:bank.id,categoryId:expenseCategory.id,amount:'500.00',date:today,notes:'Unusual purchase'},crypto.randomUUID());expect(anomalyCandidate.status).toBe(201);const anomalyId=(await anomalyCandidate.json()).id;
+      await sweepNotifications(reminderNow);
+      const anomalyNotices=await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread',{headers}).then(r=>r.json());
+      const unusualNotice=anomalyNotices.items.find((n:any)=>n.kind==='unusual-spending'&&n.sourceId===anomalyId);
+      expect(unusualNotice).toBeDefined();expect(unusualNotice.evidence.sampleCount).toBeGreaterThanOrEqual(10);expect(unusualNotice.evidence.median).toBe('10.0000');expect(unusualNotice.evidence.medianAbsoluteDeviation).toBe('0.0000');expect(unusualNotice.evidence.threshold).toBe('100.0000');
+      // Baseline membership is exact: another category and currency cannot influence this alert.
+      const excludedCategory=categoryData.items.find((item:any)=>item.name==='Transport');
+      const excludedAccountResponse=await post('/api/workspaces/'+personal.id+'/accounts',{name:'USD anomaly exclusion',kind:'bank',currency:'USD',openingBalance:'0'},cookie);expect(excludedAccountResponse.status).toBe(201);const excludedAccount=(await excludedAccountResponse.json()).account;
+      const excludedIds:string[]=[];
+      for(let offset=0;offset<10;offset++){const d=new Date(today+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-40+offset);for(const [accountId,categoryId] of [[bank.id,excludedCategory.id],[excludedAccount.id,expenseCategory.id]]){const response=await create({type:'expense',accountId,categoryId,currency:'IDR',amount:'9999',date:d.toISOString().slice(0,10),notes:'Excluded anomaly history'},crypto.randomUUID());expect(response.status).toBe(201);const excludedId=(await response.json()).id;excludedIds.push(excludedId);if(accountId===excludedAccount.id)await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);await tx.unsafe('update transactions set currency=$2 where id=$1',[excludedId,'USD']);});}}
+      await sweepNotifications(reminderNow);
+      const unchangedAnomaly=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?type=unusual-spending',{headers}).then(r=>r.json())).items.find((n:any)=>n.sourceId===anomalyId);
+      expect(unchangedAnomaly.evidence.sampleCount).toBe(unusualNotice.evidence.sampleCount);expect(unchangedAnomaly.evidence.median).toBe('10.0000');
+      const baselineDay=new Date(today+'T00:00:00Z');baselineDay.setUTCDate(baselineDay.getUTCDate()-50);
+      const editBaseline=async(id:string,version:number,date:string)=>fetch(api+'/api/workspaces/'+personal.id+'/transactions/'+id+'?version='+version,{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({type:'expense',accountId:bank.id,categoryId:expenseCategory.id,amount:'10',date,notes:'Edited anomaly baseline'})});
+      for(const id of anomalyIds.slice(0,2))expect((await editBaseline(id,1,today)).status).toBe(200);await sweepNotifications(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?type=unusual-spending',{headers}).then(r=>r.json())).items.find((n:any)=>n.id===unusualNotice.id).resolutionReason).toBe('insufficient_history');
+      for(let i=0;i<2;i++){const day=new Date(baselineDay);day.setUTCDate(day.getUTCDate()+i);expect((await editBaseline(anomalyIds[i],2,day.toISOString().slice(0,10))).status).toBe(200);}await sweepNotifications(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?type=unusual-spending',{headers}).then(r=>r.json())).items.find((n:any)=>n.id===unusualNotice.id).resolvedAt).toBeNull();
+      // Move the candidate before its history, then lower it: both mutations resolve stale evidence.
+      const patchAnomaly=async(version:number,date:string,amount:string)=>fetch(api+'/api/workspaces/'+personal.id+'/transactions/'+anomalyId+'?version='+version,{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({type:'expense',accountId:bank.id,categoryId:expenseCategory.id,amount,date,notes:'Edited anomaly fixture'})});
+      expect((await patchAnomaly(1,'2026-01-01','500')).status).toBe(200);await sweepNotifications(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?type=unusual-spending',{headers}).then(r=>r.json())).items.find((n:any)=>n.id===unusualNotice.id).resolvedAt).toBeTruthy();
+      expect((await patchAnomaly(2,today,'500')).status).toBe(200);await sweepNotifications(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?type=unusual-spending',{headers}).then(r=>r.json())).items.find((n:any)=>n.id===unusualNotice.id).resolvedAt).toBeNull();
+      expect((await patchAnomaly(3,today,'20')).status).toBe(200);await sweepNotifications(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?type=unusual-spending',{headers}).then(r=>r.json())).items.find((n:any)=>n.id===unusualNotice.id).resolvedAt).toBeTruthy();
+      expect((await patchAnomaly(4,today,'500')).status).toBe(200);await sweepNotifications(reminderNow);
+      for(const id of excludedIds)expect((await fetch(api+'/api/workspaces/'+personal.id+'/transactions/'+id+'?version=1',{method:'DELETE',headers})).status).toBe(204);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/accounts/'+excludedAccount.id,{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({archived:true})})).status).toBe(200);
+      for(const id of [anomalyId,...anomalyIds])expect((await fetch(api+'/api/workspaces/'+personal.id+'/transactions/'+id+'?version='+(id===anomalyId?5:anomalyIds.slice(0,2).includes(id)?3:1),{method:'DELETE',headers})).status).toBe(204);
+      const dirtyExpense=await create({type:'expense',accountId:bank.id,categoryId:expenseCategory.id,amount:'1.00',date:today,notes:'Dirty range fixture'},crypto.randomUUID());
+      expect(dirtyExpense.status).toBe(201);const dirtyExpenseBody=await dirtyExpense.json();
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/transactions/'+dirtyExpenseBody.id+'?version=1',{method:'DELETE',headers})).status).toBe(204);
+      const dirtyRange=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.notification_worker','true',true)");return tx.unsafe("select state,dirty_version as \"dirtyVersion\",processed_version as \"processedVersion\" from finance_notification_evaluation_state where workspace_id=$1 and rule_key='unusual_spending' and period_key='dirty' and dirty_version>processed_version limit 1",[personal.id]);});
+      expect(dirtyRange.length).toBe(1);
+      await sweepNotifications(reminderNow);
+      const drainedDirty=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.notification_worker','true',true)");return tx.unsafe("select 1 from finance_notification_evaluation_state where workspace_id=$1 and rule_key='unusual_spending' and period_key='dirty' and dirty_version>processed_version limit 1",[personal.id]);});
+      expect(drainedDirty.length).toBe(0);
+      const removedAnomaly=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=resolved&type=unusual-spending',{headers}).then(r=>r.json())).items.find((item:any)=>item.id===unusualNotice.id);expect(removedAnomaly?.resolutionReason).toBe('transaction_deleted');
       const goalResponse=await post('/api/workspaces/'+personal.id+'/goals',{name:'Emergency fund',targetAmount:'500.00'},cookie);
       expect(goalResponse.status).toBe(201);const goal=(await goalResponse.json()).goal;
       expect((await post('/api/workspaces/'+personal.id+'/goals/'+goal.id+'/contributions',{amount:'250.00',direction:'add'},cookie)).status).toBe(201);
@@ -123,15 +229,66 @@ describe('workspace tracking integration',()=>{
       const goalView=await fetch(api+'/api/workspaces/'+personal.id+'/goals',{headers}).then(r=>r.json());
       expect(goalView.items.find((g:any)=>g.id===goal.id).saved).toBe('150.0000');
       const dueToday=today;
+      const threeDaysFromNow=new Date(today+'T00:00:00Z');threeDaysFromNow.setUTCDate(threeDaysFromNow.getUTCDate()+3);const reminderTestDue=threeDaysFromNow.toISOString().slice(0,10);
+      const stageBillResponse=await post('/api/workspaces/'+personal.id+'/bills',{name:'Stage transition test',amount:'20.00',dueOn:reminderTestDue,frequency:'once',reminderDays:[3,0]},cookie);expect(stageBillResponse.status).toBe(201);
+      const stageBill=(await fetch(api+'/api/workspaces/'+personal.id+'/bills',{headers}).then(r=>r.json())).items.find((item:any)=>item.name==='Stage transition test');expect(stageBill).toBeDefined();
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({emailBillReminders:false})})).status).toBe(200);
+      await sweepBillReminders(reminderNow);
+      let stageNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=bill-reminder&limit=100',{headers}).then(r=>r.json())).items.filter((item:any)=>item.sourceId===stageBill.id);
+      expect(stageNotices.some((item:any)=>item.messageKey==='bill.upcoming'&&!item.resolvedAt)).toBe(true);
+      await sweepBillReminders(new Date(reminderNow.valueOf()+3*86400000));
+      stageNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=bill-reminder&limit=100',{headers}).then(r=>r.json())).items.filter((item:any)=>item.sourceId===stageBill.id);
+      expect(stageNotices).toHaveLength(2);expect(stageNotices.some((item:any)=>item.messageKey==='bill.upcoming'&&item.resolvedAt)).toBe(true);expect(stageNotices.some((item:any)=>item.messageKey==='bill.today'&&!item.resolvedAt)).toBe(true);
+      await sweepNotifications(new Date(reminderNow.valueOf()+4*86400000));
+      stageNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=bill-reminder&limit=100',{headers}).then(r=>r.json())).items.filter((item:any)=>item.sourceId===stageBill.id);
+      expect(stageNotices).toHaveLength(3);expect(stageNotices.some((item:any)=>item.messageKey==='bill.today'&&item.resolvedAt)).toBe(true);expect(stageNotices.some((item:any)=>item.messageKey==='bill.overdue'&&!item.resolvedAt)).toBe(true);
+      const overdueStageNotice=stageNotices.find((item:any)=>item.messageKey==='bill.overdue'&&!item.resolvedAt);const dueDateBeforeSnooze=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);const [row]=await tx.unsafe('select due_on::text as due_on from bill_occurrences where workspace_id=$1 and id=$2',[personal.id,stageBill.id]);return row.due_on;});expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications/'+overdueStageNotice.id+'/snooze',{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({until:new Date(Date.now()+3600000).toISOString()})})).status).toBe(200);const dueDateAfterSnooze=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);const [row]=await tx.unsafe('select due_on::text as due_on from bill_occurrences where workspace_id=$1 and id=$2',[personal.id,stageBill.id]);return row.due_on;});expect(dueDateAfterSnooze).toBe(dueDateBeforeSnooze);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/bills/'+stageBill.billId,{method:'DELETE',headers})).status).toBe(204);
+      await sweepBillReminders(reminderNow);
+      await sweepBillReminders(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=bill-reminder&limit=100',{headers}).then(r=>r.json())).items.filter((item:any)=>item.sourceId===stageBill.id&&!item.resolvedAt)).toHaveLength(0);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({emailBillReminders:true})})).status).toBe(200);
+      const rescheduledResponse=await post('/api/workspaces/'+personal.id+'/bills',{name:'Rescheduled bill',amount:'22.00',dueOn:reminderTestDue,frequency:'once',reminderDays:[3,0]},cookie);expect(rescheduledResponse.status).toBe(201);const rescheduledBill=(await fetch(api+'/api/workspaces/'+personal.id+'/bills',{headers}).then(r=>r.json())).items.find((item:any)=>item.name==='Rescheduled bill');expect(rescheduledBill).toBeDefined();
+      await sweepBillReminders(reminderNow,undefined,async()=>{});let rescheduledNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=bill-reminder&limit=100',{headers}).then(r=>r.json())).items.filter((item:any)=>item.sourceId===rescheduledBill.id);expect(rescheduledNotices).toHaveLength(1);expect(rescheduledNotices[0].messageKey).toBe('bill.upcoming');
+      const editedDue=new Date(today+'T00:00:00Z');editedDue.setUTCDate(editedDue.getUTCDate()+10);const editedDueOn=editedDue.toISOString().slice(0,10);await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);await tx.unsafe('update bill_occurrences set due_on=$3::date where workspace_id=$1 and id=$2',[personal.id,rescheduledBill.id,editedDueOn]);});await sweepBillReminders(reminderNow,undefined,async()=>{});rescheduledNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=bill-reminder&limit=100',{headers}).then(r=>r.json())).items.filter((item:any)=>item.sourceId===rescheduledBill.id);expect(rescheduledNotices).toHaveLength(1);expect(rescheduledNotices[0].resolvedAt).toBeTruthy();
+      const disabledBillResponse=await post('/api/workspaces/'+personal.id+'/bills',{name:'Disabled recurring bill',amount:'35.00',dueOn:reminderTestDue,frequency:'month',reminderDays:[3,0]},cookie);expect(disabledBillResponse.status).toBe(201);
+      const disabledBill=(await fetch(api+'/api/workspaces/'+personal.id+'/bills',{headers}).then(r=>r.json())).items.find((item:any)=>item.name==='Disabled recurring bill');expect(disabledBill).toBeDefined();
+      await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);await tx.unsafe('update bills set enabled=false where workspace_id=$1 and id=$2',[personal.id,disabledBill.billId]);});
+      await sweepBillReminders(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=bill-reminder&limit=100',{headers}).then(r=>r.json())).items.some((item:any)=>item.sourceId===disabledBill.id)).toBe(false);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/bills/'+disabledBill.billId,{method:'DELETE',headers})).status).toBe(204);
+      const skippedBillResponse=await post('/api/workspaces/'+personal.id+'/bills',{name:'Skipped bill reminder',amount:'15.00',dueOn:dueToday,frequency:'once',reminderDays:[3,0]},cookie);expect(skippedBillResponse.status).toBe(201);const skippedBill=(await fetch(api+'/api/workspaces/'+personal.id+'/bills',{headers}).then(r=>r.json())).items.find((item:any)=>item.name==='Skipped bill reminder');expect(skippedBill).toBeDefined();await sweepBillReminders(reminderNow,undefined,async()=>{});expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=bill-reminder',{headers}).then(r=>r.json())).items.some((item:any)=>item.sourceId===skippedBill.id)).toBe(true);expect((await post('/api/workspaces/'+personal.id+'/bill-occurrences/'+skippedBill.id+'/skip',{},cookie)).status).toBe(200);await sweepBillReminders(reminderNow);expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=bill-reminder&limit=100',{headers}).then(r=>r.json())).items.filter((item:any)=>item.sourceId===skippedBill.id&&!item.resolvedAt)).toHaveLength(0);
       const billResponse=await post('/api/workspaces/'+personal.id+'/bills',{name:'Internet',amount:'75.00',dueOn:dueToday,frequency:'once',reminderDays:[3,0]},cookie);
       expect(billResponse.status).toBe(201);
       const billList=await fetch(api+'/api/workspaces/'+personal.id+'/bills',{headers}).then(r=>r.json());
       const occurrence=billList.items.find((item:any)=>item.name==='Internet'&&item.dueOn===dueToday);
       expect(occurrence).toBeDefined();
-      await sweepBillReminders();
-      await waitForBillReminder();
+      await sweepBillReminders(reminderNow,undefined,async()=>{throw Object.assign(new Error('Redis unavailable in recovery test'),{code:'REDIS_UNAVAILABLE'});});
+      const pendingBillDelivery=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);const [row]=await tx.unsafe("select d.status from finance_notification_deliveries d join finance_notifications n on n.workspace_id=d.workspace_id and n.user_id=d.user_id and n.id=d.notification_id where d.workspace_id=$1 and d.user_id=$2 and n.source_id=$3 and d.channel='email' order by d.created_at desc limit 1",[personal.id,currentSession.user.id,occurrence.id]);return row?.status;});
+      expect(['pending','accepted']).toContain(pendingBillDelivery);
+      if(pendingBillDelivery==='pending'){
+        await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);await tx.unsafe("update finance_notification_deliveries d set status='processing',lease_expires_at=now()-interval '2 minutes',send_started_at=null from finance_notifications n where d.workspace_id=$1 and d.user_id=$2 and d.notification_id=n.id and n.source_id=$3 and d.channel='email'",[personal.id,currentSession.user.id,occurrence.id]);});
+        await sweepBillReminders(reminderNow);
+        await waitForBillReminder();
+        expect(await waitForDeliveryStatus(personal.id,currentSession.user.id,occurrence.id,'email','accepted')).toBe('accepted');
+      }else await waitForBillReminder();
+      const uncertainBillResponse=await post('/api/workspaces/'+personal.id+'/bills',{name:'Uncertain delivery',amount:'12.00',dueOn:dueToday,frequency:'once',reminderDays:[3,0]},cookie);expect(uncertainBillResponse.status).toBe(201);const uncertainBill=(await fetch(api+'/api/workspaces/'+personal.id+'/bills',{headers}).then(r=>r.json())).items.find((item:any)=>item.name==='Uncertain delivery');expect(uncertainBill).toBeDefined();
+      await sweepBillReminders(reminderNow,undefined,async()=>{throw Object.assign(new Error('Redis unavailable in recovery test'),{code:'REDIS_UNAVAILABLE'});});
+      await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);await tx.unsafe("update finance_notification_deliveries d set status='processing',lease_expires_at=now()-interval '2 minutes',send_started_at=now()-interval '90 seconds' from finance_notifications n where d.workspace_id=$1 and d.user_id=$2 and d.notification_id=n.id and n.source_id=$3 and d.channel='email'",[personal.id,currentSession.user.id,uncertainBill.id]);});await sweepBillReminders(reminderNow);
+      const unknownDelivery=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);const [row]=await tx.unsafe("select d.status from finance_notification_deliveries d join finance_notifications n on n.workspace_id=d.workspace_id and n.user_id=d.user_id and n.id=d.notification_id where d.workspace_id=$1 and d.user_id=$2 and n.source_id=$3 and d.channel='email' order by d.created_at desc limit 1",[personal.id,currentSession.user.id,uncertainBill.id]);return row?.status;});expect(unknownDelivery).toBe('unknown');
+      const visibleUnknown=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?type=bill-reminder',{headers}).then(r=>r.json())).items.find((n:any)=>n.sourceId===uncertainBill.id);expect(visibleUnknown.deliveries.some((d:any)=>d.channel==='email'&&d.status==='unknown')).toBe(true);const deliveryHealth=await fetch(api+'/api/workspaces/'+personal.id+'/notification-delivery-health',{headers}).then(r=>r.json());expect(deliveryHealth.counts.unknown).toBeGreaterThan(0);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/bills/'+uncertainBill.billId,{method:'DELETE',headers})).status).toBe(204);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/push-subscriptions',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({endpoint:'https://fcm.googleapis.com/fcm/send/bill-test',keys:{p256dh:'test-public-key',auth:'test-auth-secret'}})})).status).toBe(204);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({pushBillReminders:true})})).status).toBe(200);
+      const billPushPayloads:string[]=[];
+      await sweepBillReminders(reminderNow,async(_subscription,payload)=>{billPushPayloads.push(payload);return {accepted:true};});
+      expect(billPushPayloads.length).toBeGreaterThan(0);
+      expect(billPushPayloads.every((payload)=>payload.includes('Open CapyBudget'))).toBe(true);
+      const initialBillPushCount=billPushPayloads.length;
       expect((await post('/api/workspaces/'+personal.id+'/bill-occurrences/'+occurrence.id+'/paid',{},cookie)).status).toBe(200);
-      await sweepBillReminders();
+      await sweepBillReminders(reminderNow);
+      await sweepBillReminders(reminderNow,async(_subscription,payload)=>{billPushPayloads.push(payload);return {accepted:true};});
+      expect(billPushPayloads).toHaveLength(initialBillPushCount);
       const billAfterPaid=await fetch(api+'/api/workspaces/'+personal.id+'/bills',{headers}).then(r=>r.json());
       expect(billAfterPaid.items.find((item:any)=>item.id===occurrence.id).status).toBe('paid');
       const transfer=await create({type:'transfer',accountId:bank.id,destinationAccountId:cash.id,amount:'200.00',date:'2026-09-03',notes:'Cash withdrawal'},crypto.randomUUID());
@@ -140,9 +297,37 @@ describe('workspace tracking integration',()=>{
       const rows=await fetch(api+'/api/workspaces/'+personal.id+'/accounts',{headers}).then(r=>r.json());
       expect(rows.items.find((a:any)=>a.id===bank.id).balance).toBe('400.0000');
       expect(rows.items.find((a:any)=>a.id===cash.id).balance).toBe('200.0000');
-      const summary=await fetch(api+'/api/workspaces/'+personal.id+'/summary?from=2026-09-01&to=2026-09-30',{headers}).then(r=>r.json());
+      const summary=await fetch(api+'/api/workspaces/'+personal.id+'/summary?from=2026-09-01&to='+today,{headers}).then(r=>r.json());
       expect(summary.income).toBe('500.0000');
       expect(summary.expense).toBe('900.0000');
+      const zeroBalanceRule=await fetch(api+'/api/workspaces/'+personal.id+'/notification-rules',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({ruleType:'low_balance',accountId:cash.id,threshold:'0',enabled:true})});expect(zeroBalanceRule.status).toBe(200);const zeroBalanceRuleBody=(await zeroBalanceRule.json()).rule;
+      await sweepNotifications(reminderNow);expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=recorded-low-balance',{headers}).then(r=>r.json())).items.some((notice:any)=>notice.sourceId===cash.id)).toBe(false);
+      expect((await create({type:'expense',accountId:cash.id,categoryId:expenseCategory.id,amount:'200.00',date:today,notes:'Reach zero balance limit'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=recorded-low-balance',{headers}).then(r=>r.json())).items.some((notice:any)=>notice.sourceId===cash.id)).toBe(false);
+      expect((await create({type:'expense',accountId:cash.id,categoryId:expenseCategory.id,amount:'1.00',date:today,notes:'Cross zero balance limit'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);
+      const zeroLimitAlert=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=recorded-low-balance',{headers}).then(r=>r.json())).items.find((notice:any)=>notice.sourceId===cash.id);expect(zeroLimitAlert?.evidence.balance).toBe('-1.0000');expect(zeroLimitAlert?.evidence.threshold).toBe('0');
+      expect((await create({type:'income',accountId:cash.id,categoryId:category.id,amount:'1.00',date:today,notes:'Recover zero balance limit'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);
+      const zeroLimitRecovered=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=resolved&type=recorded-low-balance',{headers}).then(r=>r.json())).items.find((notice:any)=>notice.id===zeroLimitAlert.id);expect(zeroLimitRecovered?.resolvedAt).toBeTruthy();
+      expect((await create({type:'income',accountId:cash.id,categoryId:category.id,amount:'200.00',date:today,notes:'Restore cash balance fixture'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);
+      const negativeRule=await fetch(api+'/api/workspaces/'+personal.id+'/notification-rules',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({ruleType:'low_balance',accountId:cash.id,threshold:'-50.00',enabled:true,version:zeroBalanceRuleBody.version})});
+      expect(negativeRule.status).toBe(200);expect((await negativeRule.json()).rule.parameters.threshold).toBe('-50.00');
+      const reachNegativeLimit=await create({type:'expense',accountId:cash.id,categoryId:expenseCategory.id,amount:'250.00',date:today,notes:'Reach overdraft limit'},crypto.randomUUID());expect(reachNegativeLimit.status).toBe(201);await sweepNotifications(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread',{headers}).then(r=>r.json())).items.some((n:any)=>n.kind==='recorded-low-balance'&&n.sourceId===cash.id)).toBe(false);
+      const crossNegativeLimit=await create({type:'expense',accountId:cash.id,categoryId:expenseCategory.id,amount:'1.00',date:today,notes:'Cross overdraft limit'},crypto.randomUUID());expect(crossNegativeLimit.status).toBe(201);await sweepNotifications(reminderNow);
+      const negativeAlert=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread',{headers}).then(r=>r.json())).items.find((n:any)=>n.kind==='recorded-low-balance'&&n.sourceId===cash.id);
+      expect(negativeAlert?.evidence.balance).toBe('-51.0000');expect(negativeAlert?.evidence.threshold).toBe('-50.00');
+      expect((await create({type:'income',accountId:cash.id,categoryId:category.id,amount:'4.00',date:today,notes:'Recover past hysteresis buffer'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);
+      const recoveredAlert=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=resolved&type=recorded-low-balance',{headers}).then(r=>r.json())).items.find((item:any)=>item.id===negativeAlert.id);
+      expect(recoveredAlert?.resolvedAt).toBeTruthy();
+      expect((await create({type:'expense',accountId:cash.id,categoryId:expenseCategory.id,amount:'4.00',date:today,notes:'Begin a new low-balance episode'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);
+      const openingAccountResponse=await post('/api/workspaces/'+personal.id+'/accounts',{name:'Opening balance test',kind:'bank',openingBalance:'500.00',openingDate:today},cookie);expect(openingAccountResponse.status).toBe(201);const openingAccount=(await openingAccountResponse.json()).account;const openingRuleResponse=await fetch(api+'/api/workspaces/'+personal.id+'/notification-rules',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({ruleType:'low_balance',accountId:openingAccount.id,threshold:'500.00',enabled:true})});expect(openingRuleResponse.status).toBe(200);await sweepNotifications(reminderNow);expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=recorded-low-balance',{headers}).then(r=>r.json())).items.some((item:any)=>item.sourceId===openingAccount.id)).toBe(false);
+      const futureBalanceDate=new Date(today+'T00:00:00Z');futureBalanceDate.setUTCDate(futureBalanceDate.getUTCDate()+1);const futureBalanceExpense=await create({type:'expense',accountId:openingAccount.id,categoryId:expenseCategory.id,amount:'100.00',date:futureBalanceDate.toISOString().slice(0,10),notes:'Future entry does not change recorded balance'},crypto.randomUUID());expect(futureBalanceExpense.status).toBe(201);await sweepNotifications(reminderNow);expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=recorded-low-balance',{headers}).then(r=>r.json())).items.some((item:any)=>item.sourceId===openingAccount.id)).toBe(false);
+      const priorDate=new Date(today+'T00:00:00Z');priorDate.setUTCDate(priorDate.getUTCDate()-1);const backdatedExpense=await create({type:'expense',accountId:openingAccount.id,categoryId:expenseCategory.id,amount:'1.00',date:priorDate.toISOString().slice(0,10),notes:'Backdated entry changes recorded balance'},crypto.randomUUID());expect(backdatedExpense.status).toBe(201);await sweepNotifications(reminderNow);const openingAlert=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=recorded-low-balance',{headers}).then(r=>r.json())).items.find((item:any)=>item.sourceId===openingAccount.id);expect(openingAlert?.evidence.balance).toBe('499.0000');
+      const reversedBackdated=await fetch(api+'/api/workspaces/'+personal.id+'/transactions/'+(await backdatedExpense.json()).id+'?version=1',{method:'DELETE',headers});expect(reversedBackdated.status).toBe(204);await sweepNotifications(reminderNow);expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=resolved&type=recorded-low-balance',{headers}).then(r=>r.json())).items.some((item:any)=>item.id===openingAlert.id)).toBe(false);
+      expect((await create({type:'income',accountId:openingAccount.id,categoryId:category.id,amount:'25.00',date:today,notes:'Reach low-balance recovery buffer'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=resolved&type=recorded-low-balance',{headers}).then(r=>r.json())).items.some((item:any)=>item.id===openingAlert.id)).toBe(true);
+      const archivedExpense=await create({type:'expense',accountId:openingAccount.id,categoryId:expenseCategory.id,amount:'26.00',date:today,notes:'Archive low balance account'},crypto.randomUUID());expect(archivedExpense.status).toBe(201);await sweepNotifications(reminderNow);const activeOpeningAlert=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=recorded-low-balance',{headers}).then(r=>r.json())).items.find((item:any)=>item.sourceId===openingAccount.id);expect(activeOpeningAlert).toBeDefined();expect((await fetch(api+'/api/workspaces/'+personal.id+'/accounts/'+openingAccount.id,{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({version:openingAccount.version,archived:true})})).status).toBe(200);await sweepNotifications(reminderNow);expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=resolved&type=recorded-low-balance',{headers}).then(r=>r.json())).items.some((item:any)=>item.id===activeOpeningAlert.id)).toBe(true);
+      const secondBalanceEpisode=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=recorded-low-balance',{headers}).then(r=>r.json())).items.find((item:any)=>item.sourceId===cash.id);
+      expect(secondBalanceEpisode?.id).not.toBe(negativeAlert.id);expect(secondBalanceEpisode?.evidence.balance).toBe('-51.0000');
       const filtered=await fetch(api+'/api/workspaces/'+personal.id+'/transactions?accountIds='+bank.id+'&categoryIds='+expenseCategory.id+'&tagIds='+tag.id+'&minAmount=90&maxAmount=110',{headers}).then(r=>r.json());
       expect(filtered.items.length).toBe(1);
       expect(filtered.items[0].id).toBe((await expenseResult.json()).id);
@@ -179,7 +364,14 @@ describe('workspace tracking integration',()=>{
       expect(confirmed.status).toBe(200);
       const finalBalances=await fetch(api+'/api/workspaces/'+personal.id+'/accounts',{headers}).then(r=>r.json());
       expect(finalBalances.items.find((a:any)=>a.id===bank.id).balance).toBe('425.0000');
-
+      const recurringPayment=await post('/api/workspaces/'+personal.id+'/recurring-rules',{name:'Monthly rent',type:'expense',accountId:bank.id,categoryId:expenseCategory.id,amount:'40.00',frequency:'month',interval:1,anchorDate:today,mode:'manual'},cookie);
+      expect(recurringPayment.status).toBe(201);const paymentRule=(await recurringPayment.json()).rule;
+      expect((await post('/api/workspaces/'+personal.id+'/recurring-occurrences/materialize',{days:30},cookie)).ok).toBe(true);
+      const pendingPayment=(await fetch(api+'/api/workspaces/'+personal.id+'/recurring-occurrences',{headers}).then(r=>r.json())).items.find((item:any)=>item.ruleId===paymentRule.id&&item.status==='pending');expect(pendingPayment).toBeDefined();
+      await sweepNotifications(reminderNow);const paymentNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=payment-due',{headers}).then(r=>r.json())).items;
+      expect(paymentNotices.some((item:any)=>item.sourceId===pendingPayment.id&&item.messageKey==='payment.today'&&item.evidence.currency==='IDR')).toBe(true);
+      const paymentLinkedRuleResponse=await post('/api/workspaces/'+personal.id+'/recurring-rules',{name:'Bill-linked rent',type:'expense',accountId:bank.id,categoryId:expenseCategory.id,amount:'55.00',frequency:'month',interval:1,anchorDate:today,mode:'manual'},cookie);expect(paymentLinkedRuleResponse.status).toBe(201);const paymentLinkedRule=(await paymentLinkedRuleResponse.json()).rule;expect((await post('/api/workspaces/'+personal.id+'/recurring-occurrences/materialize',{days:30},cookie)).ok).toBe(true);const paymentLinkedBillResponse=await post('/api/workspaces/'+personal.id+'/bills',{name:'Rent obligation',amount:'55.00',dueOn:today,frequency:'month',reminderDays:[3,0]},cookie);expect(paymentLinkedBillResponse.status).toBe(201);const paymentLinkedBill=(await paymentLinkedBillResponse.json()).bill;expect((await fetch(api+'/api/workspaces/'+personal.id+'/bills/'+paymentLinkedBill.id+'/forecast-settings',{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({recurringRuleId:paymentLinkedRule.id})})).status).toBe(200);const paymentLinkedOccurrence=(await fetch(api+'/api/workspaces/'+personal.id+'/recurring-occurrences',{headers}).then(r=>r.json())).items.find((item:any)=>item.ruleId===paymentLinkedRule.id&&item.status==='pending');expect(paymentLinkedOccurrence).toBeDefined();await sweepNotifications(reminderNow);expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=payment-due',{headers}).then(r=>r.json())).items.some((item:any)=>item.sourceId===paymentLinkedOccurrence.id)).toBe(false);
+      expect((await post('/api/workspaces/'+personal.id+'/recurring-occurrences/'+pendingPayment.id+'/skip',{},cookie)).status).toBe(200);await sweepNotifications(reminderNow);expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=payment-due&limit=100',{headers}).then(r=>r.json())).items.filter((item:any)=>item.sourceId===pendingPayment.id&&!item.resolvedAt)).toHaveLength(0);
       const assistantPath='/api/workspaces/'+personal.id+'/assistant';
       const otherEmail='scope-'+crypto.randomUUID()+'@example.test';
       const otherPassword='Scope-test-pass-482!';
@@ -189,8 +381,17 @@ describe('workspace tracking integration',()=>{
       const otherLogin=await post('/api/auth/sign-in/email',{email:otherEmail,password:otherPassword});
       expect(otherLogin.ok).toBe(true);
       const otherCookie=otherLogin.headers.getSetCookie().map(value=>value.split(';',1)[0]).join('; ');
+      const otherSession=await fetch(api+'/api/auth/get-session',{headers:{cookie:otherCookie}}).then(r=>r.json());
       const otherWorkspaces=await fetch(api+'/api/workspaces',{headers:{cookie:otherCookie}}).then(r=>r.json());
+      for(const path of ['/transactions','/accounts','/budgets','/bills','/recurring-occurrences'])expect((await fetch(api+'/api/workspaces/'+personal.id+path,{headers:{cookie:otherCookie}})).status).toBe(404);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-delivery-health',{headers:{cookie:otherCookie}})).status).toBe(404);
       expect(otherWorkspaces.items.some((workspace:any)=>workspace.id===personal.id)).toBe(false);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications',{headers:{cookie:otherCookie}})).status).toBe(404);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications/unread-count',{headers:{cookie:otherCookie}})).status).toBe(404);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-rules',{headers:{cookie:otherCookie}})).status).toBe(404);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{headers:{cookie:otherCookie}})).status).toBe(404);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{method:'PUT',headers:{cookie:otherCookie,'content-type':'application/json'},body:JSON.stringify({emailBillReminders:false})})).status).toBe(404);
+      const privateNotice=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&limit=1',{headers}).then(r=>r.json())).items[0];expect((await fetch(api+'/api/workspaces/'+personal.id+'/notifications/'+privateNotice.id+'/read',{method:'PATCH',headers:{cookie:otherCookie}})).status).toBe(404);
       expect((await fetch(api+assistantPath+'/settings',{headers:{cookie:otherCookie}})).status).toBe(404);
       expect((await fetch(api+assistantPath+'/forecast?horizon=30',{headers:{cookie:otherCookie}})).status).toBe(404);
       const savingsResponse=await post('/api/workspaces/'+personal.id+'/accounts',{name:'Optional savings',kind:'savings',openingBalance:'5000000.00'},cookie);
@@ -237,6 +438,49 @@ describe('workspace tracking integration',()=>{
       expect(persistedRun.run.status).toBe('ready');expect(persistedRun.points.length).toBeGreaterThan(0);
       const scopedForecast=await fetch(api+assistantPath+'/forecast?horizon=30',{headers}).then(r=>r.json());
       expect(scopedForecast.forecast.points.find((point:any)=>point.date===scopedForecast.forecast.asOfDate&&point.scenario==='base').openingBalance).toBe(liquidOpening);
+      const otherExpenseCategory=categoryData.items.find((item:any)=>item.name==='Transport');
+      const boundaryBudgetResponse=await post('/api/workspaces/'+personal.id+'/budgets',{name:'Exact threshold',categoryId:otherExpenseCategory.id,amount:'1000.00',cadence:'monthly',startsOn:today.slice(0,7)+'-01'},cookie);
+      expect(boundaryBudgetResponse.status).toBe(201);const boundaryBudgetId=(await boundaryBudgetResponse.json()).budget.id;
+      expect((await create({type:'expense',accountId:bank.id,categoryId:otherExpenseCategory.id,amount:'799.90',date:today,notes:'Below exact budget threshold'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);
+      let boundaryNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=budget-alert',{headers}).then(r=>r.json())).items;
+      expect(boundaryNotices.some((item:any)=>item.sourceId===boundaryBudgetId)).toBe(false);
+      const exactThresholdSpend=await create({type:'expense',accountId:bank.id,categoryId:otherExpenseCategory.id,amount:'0.10',date:today,notes:'Reach exact budget threshold'},crypto.randomUUID());expect(exactThresholdSpend.status).toBe(201);await sweepNotifications(reminderNow);
+      boundaryNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=budget-alert',{headers}).then(r=>r.json())).items;
+      expect(boundaryNotices.some((item:any)=>item.sourceId===boundaryBudgetId&&item.evidence.threshold===80)).toBe(true);
+      const exactHundredPercent=await create({type:'expense',accountId:bank.id,categoryId:otherExpenseCategory.id,amount:'200.00',date:today,notes:'Reach exactly one hundred percent'},crypto.randomUUID());expect(exactHundredPercent.status).toBe(201);const exactHundredPercentId=(await exactHundredPercent.json()).id;await sweepNotifications(reminderNow);
+      boundaryNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=budget-alert',{headers}).then(r=>r.json())).items;
+      expect(boundaryNotices.some((item:any)=>item.sourceId===boundaryBudgetId&&item.evidence.threshold===100&&item.evidence.spent==='1000.0000')).toBe(true);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/transactions/'+exactHundredPercentId+'?version=1',{method:'DELETE',headers})).status).toBe(204);await sweepNotifications(reminderNow);
+      const afterThresholdDelete=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=budget-alert',{headers}).then(r=>r.json())).items.find((item:any)=>item.sourceId===boundaryBudgetId&&item.evidence.threshold===100);
+      expect(afterThresholdDelete?.resolvedAt).toBeTruthy();
+      const refundedBudget=(await fetch(api+'/api/workspaces/'+personal.id+'/budgets',{headers}).then(r=>r.json())).items.find((b:any)=>b.id===boundaryBudgetId);expect(refundedBudget.spent).toBe('800.0000'); // MVP full refunds use the audited expense reversal.
+      expect((await post('/api/workspaces/'+personal.id+'/transactions/'+exactHundredPercentId+'/restore',{},cookie)).status).toBe(200);await sweepNotifications(reminderNow);
+      const afterThresholdRestore=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=budget-alert',{headers}).then(r=>r.json())).items.find((item:any)=>item.sourceId===boundaryBudgetId&&item.evidence.threshold===100);
+      expect(afterThresholdRestore?.resolvedAt).toBeTruthy();
+      // A partial refund records the retained expense amount through the existing audited edit.
+      const refundEdit=async(version:number,amount:string)=>fetch(api+'/api/workspaces/'+personal.id+'/transactions/'+exactHundredPercentId+'?version='+version,{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({type:'expense',accountId:bank.id,categoryId:otherExpenseCategory.id,amount,date:today,notes:'Partial refund: retained purchase cost'})});
+      expect((await refundEdit(3,'100')).status).toBe(200);await sweepNotifications(reminderNow);
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/budgets',{headers}).then(r=>r.json())).items.find((b:any)=>b.id===boundaryBudgetId).spent).toBe('900.0000');
+      expect((await refundEdit(4,'200')).status).toBe(200);await sweepNotifications(reminderNow);
+      const afterRefundRestoration=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?type=budget-alert',{headers}).then(r=>r.json())).items.filter((n:any)=>n.sourceId===boundaryBudgetId&&n.evidence.threshold===100);expect(afterRefundRestoration).toHaveLength(1);expect(afterRefundRestoration[0].resolvedAt).toBeTruthy();
+
+      const parentCategoryResponse=await post('/api/workspaces/'+personal.id+'/categories',{name:'Family spending',type:'expense'},cookie);expect(parentCategoryResponse.status).toBe(201);const parentCategory=(await parentCategoryResponse.json()).category;
+      const childCategoryResponse=await post('/api/workspaces/'+personal.id+'/categories',{name:'Family groceries',type:'expense',parentId:parentCategory.id},cookie);expect(childCategoryResponse.status).toBe(201);const childCategory=(await childCategoryResponse.json()).category;
+      const parentBudgetResponse=await post('/api/workspaces/'+personal.id+'/budgets',{name:'Family budget',categoryId:parentCategory.id,amount:'100.00',cadence:'monthly',startsOn:today.slice(0,7)+'-01'},cookie);expect(parentBudgetResponse.status).toBe(201);const parentBudgetId=(await parentBudgetResponse.json()).budget.id;
+      expect((await create({type:'expense',accountId:bank.id,categoryId:childCategory.id,amount:'80.00',date:today,notes:'Child category budget check'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);
+      const parentBudgetView=await fetch(api+'/api/workspaces/'+personal.id+'/budgets',{headers}).then(r=>r.json());expect(parentBudgetView.items.find((item:any)=>item.id===parentBudgetId).spent).toBe('80.0000');
+      const parentBudgetNotice=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=budget-alert',{headers}).then(r=>r.json())).items.find((item:any)=>item.sourceId===parentBudgetId);
+      expect(parentBudgetNotice?.evidence.threshold).toBe(80);expect(parentBudgetNotice?.evidence.spent).toBe('80.0000');
+      expect((await fetch(api+'/api/workspaces/'+personal.id+'/budgets/'+parentBudgetId,{method:'DELETE',headers})).status).toBe(204);await sweepNotifications(reminderNow);
+      const archivedBudgetNotice=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&type=budget-alert',{headers}).then(r=>r.json())).items.find((item:any)=>item.sourceId===parentBudgetId);
+      expect(archivedBudgetNotice?.resolvedAt).toBeTruthy();
+      const jumpCategory=categoryData.items.find((item:any)=>item.name==='Shopping');
+      const jumpBudgetResponse=await post('/api/workspaces/'+personal.id+'/budgets',{name:'Threshold jump',categoryId:jumpCategory.id,amount:'1000.00',cadence:'monthly',startsOn:today.slice(0,7)+'-01'},cookie);expect(jumpBudgetResponse.status).toBe(201);const jumpBudgetId=(await jumpBudgetResponse.json()).budget.id;
+      expect((await create({type:'expense',accountId:bank.id,categoryId:jumpCategory.id,amount:'1200.00',date:today,notes:'Cross both budget thresholds'},crypto.randomUUID())).status).toBe(201);await sweepNotifications(reminderNow);
+      const jumpNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=unread&type=budget-alert',{headers}).then(r=>r.json())).items.filter((item:any)=>item.sourceId===jumpBudgetId);
+      expect(jumpNotices).toHaveLength(1);expect(jumpNotices[0].evidence.threshold).toBe(100);
+      const jumpMarkers=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);return tx.unsafe("select period_key from finance_notification_evaluation_state where workspace_id=$1 and user_id=$2 and rule_key='budget_threshold' and scope_key=$3 order by period_key",[personal.id,currentSession.user.id,jumpBudgetId]);});
+      expect(jumpMarkers).toHaveLength(2);expect(jumpMarkers.map((row:any)=>row.period_key)).toContain(today.slice(0,7)+'-01:r1:80');expect(jumpMarkers.map((row:any)=>row.period_key)).toContain(today.slice(0,7)+'-01:r1:100');
       const baselineCandidate=scopedForecast.historyTransactions.find((row:any)=>row.amount==='100.0000');
       expect(baselineCandidate).toMatchObject({type:'expense',excluded:false,overrideVersion:0});
       const excludedBaseline=await fetch(api+assistantPath+'/history-overrides/'+baselineCandidate.id,{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({version:0,excludeFromBaseline:true,reason:'One-time meal'})});
@@ -286,24 +530,36 @@ describe('workspace tracking integration',()=>{
       const localForecastBody=await localForecast.json();
       expect(localForecastBody.forecast.safeToSpend).toBeNull();
       expect(localForecastBody.forecast.qualityFlags.some((flag:string)=>flag.startsWith('insufficient_history:'))).toBe(true);
-      const currentSession=await fetch(api+'/api/auth/get-session',{headers}).then(r=>r.json());
       const rlsRole='cb_rls_'+crypto.randomUUID().replaceAll('-','');
       await client.unsafe(`create role ${rlsRole} nologin nosuperuser nobypassrls`);
       try{
-        await client.unsafe(`grant select on assistant_settings,workspace_memberships to ${rlsRole}`);
+        await client.unsafe(`grant select,insert on assistant_settings,workspace_memberships,finance_notifications,finance_notification_preferences,finance_notification_rules,finance_notification_deliveries,finance_notification_evaluation_state to ${rlsRole}`);
         const rlsEvidence=await client.begin(async(tx)=>{
           await tx.unsafe(`set local role ${rlsRole}`);
-          await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);
+          await tx.unsafe("select set_config('app.notification_worker','false',true),set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);
           const ownRows=await tx.unsafe('select user_id from assistant_settings where workspace_id=$1',[personal.id]);
+          const tableNames=['finance_notifications','finance_notification_preferences','finance_notification_rules','finance_notification_deliveries','finance_notification_evaluation_state'];
+          const ownScoped=Array<number>();for(const table of tableNames){const rows=await tx.unsafe(`select user_id from ${table} where workspace_id=$1`,[personal.id]);ownScoped.push(rows.length);}
+          await tx.unsafe("select set_config('app.other_user_id',$1,true)",[otherSession.user.id]);
+          await tx.unsafe(`do $$ begin begin
+            insert into finance_notification_preferences(workspace_id,user_id,event_type,channel,enabled)
+            values(current_setting('app.workspace_id')::uuid,current_setting('app.other_user_id'),'bill-reminder','in_app',true);
+            raise exception using errcode='P0001',message='cross-recipient notification insert unexpectedly passed RLS';
+            exception when insufficient_privilege then perform set_config('app.notification_rls_write_denied','true',true);
+          end; end $$`);
+          const [writeCheck]=await tx.unsafe("select current_setting('app.notification_rls_write_denied',true) as denied");
           await tx.unsafe("select set_config('app.user_id','untrusted-user',true)");
           const otherUserRows=await tx.unsafe('select user_id from assistant_settings where workspace_id=$1',[personal.id]);
+          const otherUserScoped=Array<number>();for(const table of tableNames){const rows=await tx.unsafe(`select user_id from ${table} where workspace_id=$1`,[personal.id]);otherUserScoped.push(rows.length);}
           await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,'00000000-0000-4000-8000-000000000001']);
           const otherWorkspaceRows=await tx.unsafe('select user_id from assistant_settings where workspace_id=$1',[personal.id]);
-          return {ownRows:ownRows.length,otherUserRows:otherUserRows.length,otherWorkspaceRows:otherWorkspaceRows.length};
+          const otherWorkspaceScoped=Array<number>();for(const table of tableNames){const rows=await tx.unsafe(`select user_id from ${table} where workspace_id=$1`,[personal.id]);otherWorkspaceScoped.push(rows.length);}
+          return {ownRows:ownRows.length,otherUserRows:otherUserRows.length,otherWorkspaceRows:otherWorkspaceRows.length,ownScoped,otherUserScoped,otherWorkspaceScoped,writeDenied:writeCheck.denied==='true'};
         });
-        expect(rlsEvidence).toEqual({ownRows:1,otherUserRows:0,otherWorkspaceRows:0});
+        expect(rlsEvidence.ownRows).toBe(1);expect(rlsEvidence.otherUserRows).toBe(0);expect(rlsEvidence.otherWorkspaceRows).toBe(0);expect(rlsEvidence.writeDenied).toBe(true);
+        expect(rlsEvidence.ownScoped.every((count)=>count>0)).toBe(true);expect(rlsEvidence.otherUserScoped.every((count)=>count===0)).toBe(true);expect(rlsEvidence.otherWorkspaceScoped.every((count)=>count===0)).toBe(true);
       }finally{
-        await client.unsafe(`revoke all privileges on assistant_settings,workspace_memberships from ${rlsRole}`);
+        await client.unsafe(`revoke all privileges on assistant_settings,workspace_memberships,finance_notifications,finance_notification_preferences,finance_notification_rules,finance_notification_deliveries,finance_notification_evaluation_state from ${rlsRole}`);
         await client.unsafe(`drop role ${rlsRole}`);
       }
       await client.begin(async(tx)=>{
@@ -333,7 +589,7 @@ describe('workspace tracking integration',()=>{
       // Materialize the bill occurrence before forecasting. Creating forecast
       // events invalidates the forecast freshness marker, so doing this after
       // the refresh would correctly suppress the email until another refresh.
-      await sweepBillReminders();
+      await sweepBillReminders(reminderNow);
       expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({emailAssistantAlerts:true})})).status).toBe(200);
       const alertForecast=await fetch(api+assistantPath+'/forecast?horizon=30',{headers}).then(r=>r.json());
       expect(alertForecast.suggestions.some((item:any)=>item.kind==='shortfall'&&item.facts.scope==='account'&&item.facts.accountId===forecastAccount.id)).toBe(true);
@@ -358,22 +614,34 @@ describe('workspace tracking integration',()=>{
         return row.checked_at;
       });
       expect(new Date(refreshedAt).valueOf()).toBeGreaterThan(Date.now()-60_000);
-      await sweepBillReminders();
+      await sweepBillReminders(reminderNow);
       const assistantAlertMail=await waitForAssistantAlert();
       expect((assistantAlertMail.To??[]).some((recipient:any)=>recipient.Address===email)).toBe(true);
       expect((assistantAlertMail.Text+'\n'+assistantAlertMail.HTML).includes('3100000')).toBe(false);
       const alertMailListing=await fetch(mailpit+'/api/v1/messages?limit=50').then(r=>r.json());
-      expect(alertMailListing.messages.filter((message:any)=>message.Subject==='A cashflow update · CapyBudget'&&message.To?.some((recipient:any)=>recipient.Address===email)).length).toBe(1);
+      const assistantMailCount=alertMailListing.messages.filter((message:any)=>message.Subject==='A cashflow update · CapyBudget'&&message.To?.some((recipient:any)=>recipient.Address===email)).length;
+      const projectedNotices=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=all&limit=100',{headers}).then(r=>r.json())).items.filter((n:any)=>n.kind==='cashflow-shortfall'||n.kind==='cashflow-low-balance');
+      expect(projectedNotices.length).toBeGreaterThan(0);for(const notice of projectedNotices){expect(notice.evidence.projected).toBe(true);expect(notice.sourceType).toBe('assistant_suggestion');expect(notice.messageKey).toMatch(/^forecast\./);}
+      expect(new Set(projectedNotices.map((n:any)=>n.id)).size).toBe(projectedNotices.length);
+      const overlappingProjected=await client.unsafe("select a.id from finance_notifications a join assistant_suggestions x on x.id=a.assistant_suggestion_id join finance_notifications b on b.workspace_id=a.workspace_id and b.user_id=a.user_id and b.kind=a.kind join assistant_suggestions y on y.id=b.assistant_suggestion_id where a.workspace_id=$1 and a.resolved_at is null and b.resolved_at is null and x.facts->>'scope'='account' and y.facts->>'scope'='workspace' and x.facts->>'date'=y.facts->>'date'",[personal.id]);expect(overlappingProjected).toHaveLength(0);
+      const acceptedAssistantDeliveries=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);const [row]=await tx.unsafe("select count(*)::int as count from finance_notification_deliveries d join finance_notifications n on n.workspace_id=d.workspace_id and n.user_id=d.user_id and n.id=d.notification_id where d.workspace_id=$1 and d.user_id=$2 and d.channel='email' and d.status='accepted' and n.kind in ('cashflow-shortfall','cashflow-low-balance','assistant-invoice-followup')",[personal.id,currentSession.user.id]);return row.count;});
+      expect(assistantMailCount).toBe(acceptedAssistantDeliveries);expect(assistantMailCount).toBeGreaterThan(0);
       expect((await fetch(api+'/api/workspaces/'+personal.id+'/push-subscriptions',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({endpoint:'https://fcm.googleapis.com/fcm/send/assistant-test',keys:{p256dh:'test-public-key',auth:'test-auth-secret'}})})).status).toBe(204);
       expect((await fetch(api+'/api/workspaces/'+personal.id+'/notification-preferences',{method:'PUT',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({pushAssistantAlerts:true})})).status).toBe(200);
       const fakePushPayloads:string[]=[];
       const fakePushSender=async(_subscription:{endpoint:string;keys:{p256dh:string;auth:string}},payload:string)=>{fakePushPayloads.push(payload);return {accepted:true};};
-      await sweepBillReminders(new Date(),fakePushSender);
+      await sweepBillReminders(reminderNow,fakePushSender);
       expect(fakePushPayloads.length).toBeGreaterThan(0);
-      expect(fakePushPayloads.every((payload)=>payload.includes('"url":"/assistant"')&&!payload.includes('3100000'))).toBe(true);
+      const assistantPushPayloads=fakePushPayloads.filter((payload)=>payload.includes('"url":"/assistant"'));expect(assistantPushPayloads.length).toBeGreaterThan(0);expect(assistantPushPayloads.every((payload)=>!payload.includes('3100000'))).toBe(true);
       const firstFakePushCount=fakePushPayloads.length;
-      await sweepBillReminders(new Date(),fakePushSender);
+      await sweepBillReminders(reminderNow,fakePushSender);
       expect(fakePushPayloads).toHaveLength(firstFakePushCount);
+      for(const endpoint of ['https://fcm.googleapis.com/fcm/send/assistant-temporary','https://fcm.googleapis.com/fcm/send/assistant-second','https://fcm.googleapis.com/fcm/send/assistant-gone'])expect((await fetch(api+'/api/workspaces/'+personal.id+'/push-subscriptions',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({endpoint,keys:{p256dh:'test-public-key',auth:'test-auth-secret'}})})).status).toBe(204);
+      const multiDeviceCalls:string[]=[];await sweepBillReminders(reminderNow,async(subscription)=>{multiDeviceCalls.push(subscription.endpoint);if(subscription.endpoint.endsWith('/assistant-temporary'))throw Object.assign(new Error('Temporary push outage'),{statusCode:503});if(subscription.endpoint.endsWith('/assistant-gone'))throw Object.assign(new Error('Push endpoint was removed'),{statusCode:410});return {accepted:true};});
+      expect(multiDeviceCalls.some((endpoint)=>endpoint.endsWith('/assistant-temporary'))).toBe(true);expect(multiDeviceCalls.some((endpoint)=>endpoint.endsWith('/assistant-second'))).toBe(true);expect(multiDeviceCalls.some((endpoint)=>endpoint.endsWith('/assistant-gone'))).toBe(true);
+      const goneSubscriptionCount=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);const [row]=await tx.unsafe("select count(*)::int as count from push_subscriptions where workspace_id=$1 and user_id=$2 and endpoint like '%/assistant-gone'",[personal.id,currentSession.user.id]);return row.count;});expect(goneSubscriptionCount).toBe(0);
+      const retryablePushes=await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);return tx.unsafe("select d.id from finance_notification_deliveries d join finance_notifications n on n.workspace_id=d.workspace_id and n.user_id=d.user_id and n.id=d.notification_id where d.workspace_id=$1 and d.user_id=$2 and d.channel='push' and d.status='retryable' and n.kind in ('cashflow-shortfall','cashflow-low-balance','assistant-invoice-followup')",[personal.id,currentSession.user.id]);});expect(retryablePushes.length).toBeGreaterThan(0);
+      await client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);await tx.unsafe("update finance_notification_deliveries d set available_at=now() from finance_notifications n where d.workspace_id=$1 and d.user_id=$2 and d.notification_id=n.id and d.channel='push' and d.status='retryable' and n.kind in ('cashflow-shortfall','cashflow-low-balance','assistant-invoice-followup')",[personal.id,currentSession.user.id]);});const retriedEndpoints:string[]=[];await sweepBillReminders(reminderNow,async(subscription)=>{retriedEndpoints.push(subscription.endpoint);return {accepted:true};});const assistantRetryEndpoints=retriedEndpoints.filter((endpoint)=>endpoint.endsWith('/assistant-temporary'));expect(assistantRetryEndpoints.length).toBeGreaterThanOrEqual(retryablePushes.length);expect(retriedEndpoints.some((endpoint)=>endpoint.endsWith('/assistant-second'))).toBe(false);expect(retriedEndpoints.some((endpoint)=>endpoint.endsWith('/assistant-gone'))).toBe(false);
       const businessWorkspaceResponse=await post('/api/workspaces',{name:'Tracking Business',kind:'business',currency:'IDR',timezone:'Asia/Jakarta'},cookie);
       expect(businessWorkspaceResponse.status).toBe(201);
       const businessWorkspace=(await businessWorkspaceResponse.json()).workspace;
@@ -384,6 +652,22 @@ describe('workspace tracking integration',()=>{
       const businessIncomeCategory=businessCategories.items.find((category:any)=>category.type==='income');
       const profile=await fetch(api+'/api/workspaces/'+businessWorkspace.id+'/business-profile',{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({version:1,legalName:'Tracking Business',tradingName:'',contactEmail:email,phone:'',taxId:'',address:{street:'1 Main Street',city:'Jakarta',country:'Indonesia'}})});
       expect(profile.status).toBe(200);
+      const invoiceDueToday={issueDate:today,dueDate:today,recipient:{name:'Status matrix client',email,address:{street:'4 Client Road',city:'Jakarta',country:'Indonesia'}},lines:[{description:'Status matrix service',quantity:'1',unitPrice:'100'}]};
+      const draftMatrixResponse=await post('/api/workspaces/'+businessWorkspace.id+'/invoices',invoiceDueToday,cookie);expect(draftMatrixResponse.status).toBe(201);const draftMatrixInvoice=(await draftMatrixResponse.json()).invoice;
+      await sweepNotifications(reminderNow);expect((await fetch(api+'/api/workspaces/'+businessWorkspace.id+'/notifications?state=all&type=invoice-due',{headers}).then(r=>r.json())).items.some((item:any)=>item.sourceId===draftMatrixInvoice.id)).toBe(false);
+      const voidMatrixResponse=await post('/api/workspaces/'+businessWorkspace.id+'/invoices',invoiceDueToday,cookie);expect(voidMatrixResponse.status).toBe(201);const voidMatrixInvoice=(await voidMatrixResponse.json()).invoice;
+      const voidMatrixIssued=await post('/api/workspaces/'+businessWorkspace.id+'/invoices/'+voidMatrixInvoice.id+'/issue',{version:voidMatrixInvoice.version},cookie);expect(voidMatrixIssued.status).toBe(200);const voidMatrixIssuedInvoice=(await voidMatrixIssued.json()).invoice;
+      expect((await post('/api/workspaces/'+businessWorkspace.id+'/invoices/'+voidMatrixInvoice.id+'/void',{version:voidMatrixIssuedInvoice.version,reason:'Customer cancelled before payment'},cookie)).status).toBe(200);
+      const paidMatrixResponse=await post('/api/workspaces/'+businessWorkspace.id+'/invoices',invoiceDueToday,cookie);expect(paidMatrixResponse.status).toBe(201);const paidMatrixInvoice=(await paidMatrixResponse.json()).invoice;
+      const paidMatrixIssued=await post('/api/workspaces/'+businessWorkspace.id+'/invoices/'+paidMatrixInvoice.id+'/issue',{version:paidMatrixInvoice.version},cookie);expect(paidMatrixIssued.status).toBe(200);
+      expect((await post('/api/workspaces/'+businessWorkspace.id+'/invoices/'+paidMatrixInvoice.id+'/payments',{amount:'100',paidOn:today,accountId:businessAccount.id,categoryId:businessIncomeCategory.id,idempotencyKey:'tracking-invoice-paid-matrix'},cookie)).status).toBe(200);
+      const partialMatrixResponse=await post('/api/workspaces/'+businessWorkspace.id+'/invoices',invoiceDueToday,cookie);expect(partialMatrixResponse.status).toBe(201);const partialMatrixInvoice=(await partialMatrixResponse.json()).invoice;
+      const partialMatrixIssued=await post('/api/workspaces/'+businessWorkspace.id+'/invoices/'+partialMatrixInvoice.id+'/issue',{version:partialMatrixInvoice.version},cookie);expect(partialMatrixIssued.status).toBe(200);
+      expect((await post('/api/workspaces/'+businessWorkspace.id+'/invoices/'+partialMatrixInvoice.id+'/payments',{amount:'40',paidOn:today,accountId:businessAccount.id,categoryId:businessIncomeCategory.id,idempotencyKey:'tracking-invoice-partial-matrix'},cookie)).status).toBe(200);
+      await sweepNotifications(reminderNow);
+      const matrixNotices=(await fetch(api+'/api/workspaces/'+businessWorkspace.id+'/notifications?state=unread&type=invoice-due',{headers}).then(r=>r.json())).items;
+      expect(matrixNotices.some((item:any)=>item.sourceId===draftMatrixInvoice.id||item.sourceId===voidMatrixInvoice.id||item.sourceId===paidMatrixInvoice.id)).toBe(false);
+      expect(matrixNotices.find((item:any)=>item.sourceId===partialMatrixInvoice.id)?.evidence.outstanding).toBe('60.0000');
       const collectionDate=new Date(today+'T00:00:00Z');collectionDate.setUTCDate(collectionDate.getUTCDate()+7);
       const invoiceDueOn=collectionDate.toISOString().slice(0,10);
       const invoiceResponse=await post('/api/workspaces/'+businessWorkspace.id+'/invoices',{issueDate:today,dueDate:invoiceDueOn,recipient:{name:'Client',email,address:{street:'2 Client Road',city:'Jakarta',country:'Indonesia'}},lines:[{description:'Consulting',quantity:'1',unitPrice:'1000'}]},cookie);
@@ -414,6 +698,11 @@ describe('workspace tracking integration',()=>{
       expect(overdueInvoiceResponse.status).toBe(201);
       const overdueInvoice=(await overdueInvoiceResponse.json()).invoice;
       expect((await post('/api/workspaces/'+businessWorkspace.id+'/invoices/'+overdueInvoice.id+'/issue',{version:overdueInvoice.version},cookie)).status).toBe(200);
+      await sweepNotifications(reminderNow);
+      const invoiceNoticePage=await fetch(api+'/api/workspaces/'+businessWorkspace.id+'/notifications?state=unread&type=invoice-due',{headers}).then(r=>r.json());
+      const invoiceNotice=invoiceNoticePage.items.find((item:any)=>item.sourceId===overdueInvoice.id);
+      expect(invoiceNotice?.messageKey).toBe('invoice.overdue');expect(invoiceNotice?.evidence.outstanding).toBe('250.0000');expect(invoiceNotice?.evidence.currency).toBe('IDR');
+      for(const path of [`/invoices/${overdueInvoice.id}`,`/invoices/${overdueInvoice.id}/pdf`]){expect((await fetch(api+'/api/workspaces/'+businessWorkspace.id+path,{headers:{cookie:otherCookie}})).status).toBe(404);const wrongWorkspace=await fetch(api+'/api/workspaces/'+personal.id+path,{headers});expect([403,404]).toContain(wrongWorkspace.status);expect(await wrongWorkspace.text()).not.toContain('Late client');}
       const overdueForecast=await fetch(api+'/api/workspaces/'+businessWorkspace.id+'/assistant/forecast?horizon=30',{headers}).then(r=>r.json());
       const followupSuggestion=overdueForecast.suggestions.find((suggestion:any)=>suggestion.kind==='invoice_followup'&&suggestion.facts.invoiceId===overdueInvoice.id);
       expect(followupSuggestion).toBeDefined();
@@ -453,11 +742,12 @@ describe('workspace tracking integration',()=>{
         await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[currentSession.user.id,personal.id]);
         await tx.unsafe("update finance_notifications set push_sent_at=null where workspace_id=$1 and user_id=$2 and kind in ('cashflow-shortfall','cashflow-low-balance','assistant-invoice-followup')",[personal.id,currentSession.user.id]);
       });
+      const assistantPushCountBeforeRevocation=fakePushPayloads.filter((payload)=>payload.includes('"url":"/assistant"')).length;
       const liveSettings=await fetch(api+assistantPath+'/settings',{headers}).then(r=>r.json());
       const revoke=await fetch(api+assistantPath+'/settings',{method:'PATCH',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({version:liveSettings.settings.version,sourcePermissions:{history:false}})});
       expect(revoke.status).toBe(200);
-      await sweepBillReminders(new Date(),fakePushSender);
-      expect(fakePushPayloads).toHaveLength(firstFakePushCount);
+      await sweepBillReminders(reminderNow,fakePushSender);
+      expect(fakePushPayloads.filter((payload)=>payload.includes('"url":"/assistant"'))).toHaveLength(assistantPushCountBeforeRevocation);
       const currentSettings=await fetch(api+assistantPath+'/settings',{headers}).then(r=>r.json());
       const erase=await fetch(api+assistantPath+'/data',{method:'DELETE',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({confirmation:'DELETE_ASSISTANT_DATA',consentVersion:currentSettings.settings.consentVersion})});
       expect(erase.status).toBe(200);
@@ -477,5 +767,8 @@ describe('workspace tracking integration',()=>{
         return count.count;
       });
       expect(remainedDeleted).toBe(0);
-  },120000);
+      await sweepNotifications(new Date('2026-10-01T12:00:00.000Z'));
+      const rolledBudgetAlerts=(await fetch(api+'/api/workspaces/'+personal.id+'/notifications?state=resolved&type=budget-alert&limit=100',{headers}).then(r=>r.json())).items;
+      expect(rolledBudgetAlerts.some((notice:any)=>notice.sourceId===budgetId&&notice.resolvedAt)).toBe(true);
+  },180000);
 });

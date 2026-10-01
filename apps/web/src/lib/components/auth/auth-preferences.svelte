@@ -18,7 +18,7 @@
       localStorage.setItem('capybudget-theme', next ? 'dark' : 'light');
     };
 
-    if (document.startViewTransition) document.startViewTransition(apply);
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && document.startViewTransition) document.startViewTransition(apply);
     else apply();
   }
 </script>

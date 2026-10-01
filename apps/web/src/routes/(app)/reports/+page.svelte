@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getContext, onMount, tick } from 'svelte';
   import { AUTH_UI_CONTEXT, type AuthUiState } from '$lib/i18n/auth';
+  import { readPrivacyMode, writePrivacyMode } from '$lib/privacy';
   import * as Card from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
   type Workspace={id:string;currency:string;kind:'personal'|'business'};
@@ -40,12 +41,12 @@
     try{if(!runId){const response=await fetch(`/api/workspaces/${workspace.selectedId}/reports/runs`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reportType:'analytics',preset,currency:data?.summary.currency,idempotencyKey:crypto.randomUUID()})});const body=await response.json();if(!response.ok)throw new Error(body.message??'Unable to create report.');runId=body.run.id;runs=[{...body.run,reportType:'analytics',preset,status:body.run.status,periodFrom:data?.summary.period.from??'',periodToExclusive:data?.summary.period.toExclusive??'',currency:data?.summary.currency??'',rowCount:body.run.rowCount??0},...runs.filter(run=>run.id!==body.run.id)].slice(0,10);}await waitForRun(runId);await startExport(runId,format);}
     catch(e){error=e instanceof Error?e.message:'Export failed.';status='';}
   }
-  function togglePrivacy(){privacyMode=!privacyMode;localStorage.setItem('capybudget-reports-privacy',String(privacyMode));}
+  function togglePrivacy(){privacyMode=!privacyMode;writePrivacyMode(privacyMode);}
   async function exportExisting(id:string,format:'csv'|'xlsx'|'pdf'){if(!workspace.selectedId)return;error='';try{await waitForRun(id);await startExport(id,format);}catch(e){error=e instanceof Error?e.message:'Export failed.';status='';}}
   async function saveMapping(categoryId:string,activity:string){if(!workspace.selectedId)return;const response=await fetch(`/api/workspaces/${workspace.selectedId}/reports/cashflow/mappings/${categoryId}`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({activity})});if(!response.ok){const body=await response.json();error=body.message??label('Could not update category mapping.','Gagal memperbarui kategori.');return;}mappings=mappings.map(mapping=>mapping.categoryId===categoryId?{...mapping,activity}:mapping);if(data)await load(workspace.selectedId);}
   $effect(()=>{const locale=authUi.locale,dark=authUi.dark,current=data,privateView=privacyMode;void locale;void dark;void privateView;if(current)void tick().then(drawCharts);});
   $effect(()=>{const id=workspace.selectedId,period=preset;if(workspace.ready&&id)void load(id);return()=>{activeRequest?.abort();charts.forEach(chart=>chart.dispose());charts=[];};});
-  onMount(()=>{privacyMode=localStorage.getItem('capybudget-reports-privacy')==='true';return()=>{charts.forEach(chart=>chart.dispose());};});
+  onMount(()=>{privacyMode=readPrivacyMode();return()=>{charts.forEach(chart=>chart.dispose());};});
 </script>
 
 <svelte:head><title>{label('Reports and analytics','Laporan dan analitik')} · CapyBudget</title></svelte:head>

@@ -27,8 +27,8 @@ export function encryptEmailMessage(message: EmailMessage): EncryptedEmailJob {
   };
 }
 
-export function decryptEmailMessage(job: EncryptedEmailJob): EmailMessage {
-  if (job.version !== 1 || job.expiresAt <= Date.now()) throw new Error('Expired or unsupported email job');
+export function decryptEmailMessage(job: EncryptedEmailJob, allowExpired = false): EmailMessage {
+  if (job.version !== 1 || (!allowExpired && job.expiresAt <= Date.now())) throw new Error('Expired or unsupported email job');
 
   const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(job.iv, 'base64'));
   decipher.setAuthTag(Buffer.from(job.tag, 'base64'));

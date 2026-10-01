@@ -18,6 +18,7 @@
     "db:cleanup-auth": "bun run --cwd apps/api db:cleanup-auth",
     "test:auth": "bun test apps/api/tests/auth",
     "test:personal-finance": "bun test apps/api/tests/personal-finance apps/api/tests/tracking/recurrence.test.ts",
+    "test:notifications": "bun run --cwd apps/api test:notifications",
     "test:assistant": "bun run --cwd apps/api test:assistant",
     "test:assistant:integration": "bun run --cwd apps/api test:assistant:integration",
     "benchmark:assistant": "bun run --cwd apps/api benchmark:assistant",

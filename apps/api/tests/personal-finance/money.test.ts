@@ -8,8 +8,11 @@ describe('budget money calculations', () => {
   test('preserves over-budget amounts and percentages above one hundred', () => {
     expect(budgetProgress('100.0000', '125.5000')).toEqual({ remaining: '-25.5000', usedPercent: 125.5 });
   });
-  test('rejects invalid limits and excess precision', () => {
-    expect(() => budgetProgress('0', '10')).toThrow(RangeError);
+  test('reports spending against a zero limit without dividing by zero', () => {
+    expect(budgetProgress('0', '0')).toEqual({ remaining: '0.0000', usedPercent: 0 });
+    expect(budgetProgress('0', '10')).toEqual({ remaining: '-10.0000', usedPercent: null });
+  });
+  test('rejects invalid decimals and excess precision', () => {
     expect(() => budgetProgress('1.00001', '0')).toThrow(RangeError);
   });
 });

@@ -52,6 +52,22 @@ For assistant integration checks, use a disposable database whose name ends in `
 
 The `/reports` page and `/api/workspaces/:workspaceId/reports` API provide workspace dashboard, cashflow statement, budget-versus-actual, and CSV, XLSX, and PDF exports. Report snapshots and export files are private, actor-scoped, immutable, and retained for up to seven days. Snapshot generation and export rendering use the `capybudget-reports` BullMQ worker; PostgreSQL records queued, running, ready, and failed jobs so the worker can recover work after Redis interruptions. Export objects use the configured private S3-compatible bucket, and the worker deletes expired objects and retries storage cleanup. Start the worker with `bun run dev:reports-worker`; `bun run dev` starts it automatically. Apply migrations with `bun run db:migrate`. Large PDFs are refused with an explicit limit, while CSV and XLSX contain the full report snapshot. CSV is UTF-8 with a BOM for spreadsheet compatibility and neutralizes formula-leading text while preserving numeric amounts. The Excel workbook stores authoritative money as text to avoid spreadsheet precision loss. These reports describe recorded activity and are not statutory financial statements.
 
+### Notifications and reminders MVP
+
+The API scheduler started by `bun run dev` evaluates bill occurrences, outstanding issued invoices, pending outgoing recurring occurrences, budget thresholds, recorded liquid-account balances, and configured unusual-spending rules once per minute. Date-based reminders release from 09:00 in each workspace timezone and catch up within the previous seven local days. Budget alerts support zero limits and emit each crossed threshold once per budget revision and period. Notification records expire after 90 days by default; the scheduler physically removes expired records and their delivery rows. Notifications are workspace and recipient scoped, deduplicated in PostgreSQL, and shown in the header and `/notifications` inbox; `/settings/notifications` configures in-app event types and recorded-balance/unusual-spending rules. The inbox supports filtering, cursor pagination, unread counts, read-all, dismissal, snoozing, and links to authorized finance screens. Bill email remains enabled by default for verified owners; assistant email and browser push require opt-in. Newly introduced event types are in-app only by default; goal celebrations and expanded per-event email/push controls are later phases. Pending email intents are re-enqueued from PostgreSQL after Redis interruptions. An expired delivery lease with no provider attempt is retried; a lease that expired after provider send began is marked `unknown` to avoid a blind duplicate. Apply schema changes with `bun run db:migrate`. Run `bun run check`, `bun run build`, `bun run test:notifications`, and `bun run test:personal-finance` for local checks.
+
+The database-backed notification regression uses `apps/api/tests/tracking/workspace.test.ts` and Mailpit. Use a disposable PostgreSQL database whose name ends in `_test`; point both the API/workers and `DATABASE_URL`/`TRACKING_TEST_DATABASE_URL` at it. Keep Redis on an isolated database number (the example uses 15), and do not point test variables at the development database:
+
+```sh
+docker compose up -d postgres redis mailpit
+DATABASE_URL=postgres://capybudget:capybudget@localhost:5432/capybudget_notifications_test bun run db:migrate
+DATABASE_URL=postgres://capybudget:capybudget@localhost:5432/capybudget_notifications_test REDIS_URL=redis://localhost:6379/15 bun --env-file=.env --hot apps/api/src/email/worker.ts
+DATABASE_URL=postgres://capybudget:capybudget@localhost:5432/capybudget_notifications_test REDIS_URL=redis://localhost:6379/15 bun --env-file=.env --hot apps/api/src/assistant/worker.ts
+DATABASE_URL=postgres://capybudget:capybudget@localhost:5432/capybudget_notifications_test REDIS_URL=redis://localhost:6379/15 PORT=3000 bun --env-file=.env --hot apps/api/src/test-server.ts
+```
+
+In another terminal, run `TRACKING_INTEGRATION=1 TRACKING_TEST_DATABASE_URL=postgres://capybudget:capybudget@localhost:5432/capybudget_notifications_test DATABASE_URL=postgres://capybudget:capybudget@localhost:5432/capybudget_notifications_test REDIS_URL=redis://localhost:6379/15 bun --env-file=.env test apps/api/tests/tracking/workspace.test.ts`. This starts the API without development schedulers; the test invokes notification sweeps explicitly to avoid timer races. The test expects the API at `localhost:3000` and Mailpit at `localhost:8025` by default; set `AUTH_TEST_API_URL` or `MAILPIT_API_URL` to override them. Drop the disposable database and clear only the isolated Redis database after the run.
+
 ## Layout
 
 - `apps/web`: SvelteKit interface, Tailwind, charts, and typed Eden client
@@ -59,3 +75,17 @@ The `/reports` page and `/api/workspaces/:workspaceId/reports` API provide works
 - `docker-compose.yml`: PostgreSQL, Redis, and local S3-compatible SeaweedFS
 
 The Compose credentials are for local development only. Replace them before deploying.
+
+Notification delivery outcomes (`accepted`, `retryable`, `failed`, `unknown`) are visible in the inbox. SMTP acceptance means the server accepted the message, not that it reached a person's mailbox. Disconnects without an explicit SMTP response and expired leases after sending began become `unknown`; automatic resend is paused because provider delivery cannot be made exactly once. Missing SMTP configuration and permanent SMTP rejections fail visibly. Retryable failures stop after five attempts. Snoozing postpones pending delivery, and sending rechecks source date, membership, verified recipient, preferences, consent, and expiry. `GET /api/workspaces/:workspaceId/notification-delivery-health` returns recipient-scoped counts and the oldest pending timestamp without exposing recipients or provider payloads.
+
+Migration `0019_notification_cutover` preserves existing IDs, read state, email timestamps, and opt-outs, and records a cutoff for existing workspaces. It does not enqueue mail. Historical inbox notices are not resent; historical overdue/anomaly conditions and unchanged crossed budgets are baselined instead of flooding the inbox. New obligations, source changes, and future budget crossings continue normally. Notification-derived data cascades when its workspace or owner is deleted; stale encrypted jobs cannot recreate it.
+
+For MVP budget refunds, reverse a fully refunded expense using the existing audited transaction deletion, or edit a partially refunded expense to the retained cost. Both update the ledger and budget actuals. Record the refund explanation in notes. Recording the refund as unrelated income does not reduce expense totals. Threshold markers survive reversals/edits until the period ends, so undoing a refund does not repeat the same alert.
+
+Additional delivery and migration acceptance checks (use the isolated test database and Redis settings above):
+
+```bash
+TRACKING_INTEGRATION=1 DATABASE_URL=postgres://capybudget:capybudget@localhost:5432/capybudget_notifications_test REDIS_URL=redis://localhost:6379/15 bun --env-file=.env test apps/api/tests/notifications
+```
+
+These checks cover concurrent scheduler processes, duplicate job claims, real SMTP disconnect after DATA, retry exhaustion, absent SMTP configuration, Redis producer failure, lost-job recovery, stale leases, suppression, deletion, and upgrade from the pre-notification schema. The rollout check creates and drops its own disposable database, so the test database role needs `CREATEDB`. The ordinary `test:notifications` command skips database integration unless `TRACKING_INTEGRATION=1` is set.

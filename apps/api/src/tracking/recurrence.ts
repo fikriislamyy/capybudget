@@ -27,3 +27,7 @@ export function nextOccurrenceDate(anchor: string, frequency: RecurrenceFrequenc
 export function workspaceToday(timezone: string, now = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
+
+export function workspaceHour(timezone: string, now = new Date()): number {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', hourCycle: 'h23' }).format(now));
+}

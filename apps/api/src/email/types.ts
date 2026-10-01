@@ -25,6 +25,8 @@ export type EmailMessage =
       workspaceId: string;
       userId: string;
       occurrenceId: string;
+      notificationId?: string;
+      deliveryId?: string;
       locale: EmailLocale;
       expiresAt: number;
     }
@@ -55,6 +57,7 @@ export type EmailMessage =
       workspaceId: string;
       userId: string;
       notificationId: string;
+      deliveryId: string;
       title: string;
       message: string;
       locale: EmailLocale;

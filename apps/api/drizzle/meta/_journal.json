@@ -113,6 +113,34 @@
       "when": 1790893600000,
       "tag": "0015_durable_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790970000000,
+      "tag": "0016_notifications_mvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790970000001,
+      "tag": "0017_zero_budget_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790970000002,
+      "tag": "0018_budget_alert_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790970000003,
+      "tag": "0019_notification_cutover",
+      "breakpoints": true
     }
   ]
 }

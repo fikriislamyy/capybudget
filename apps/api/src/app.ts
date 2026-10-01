@@ -8,6 +8,7 @@ import { personalFinanceRoutes } from './personal-finance/routes';
 import { businessRoutes } from './business/routes';
 import { assistantRoutes } from './assistant/routes';
 import { reportsRoutes } from './reports/routes';
+import { notificationRoutes } from './notifications/routes';
 
 const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
 const trustedProxyIps = new Set((process.env.TRUSTED_PROXY_IPS ?? '').split(',').map((ip) => ip.trim()).filter(Boolean));
@@ -28,6 +29,7 @@ export const app = new Elysia()
   .use(cors({ origin: webOrigin, credentials: true }))
   .use(openapi())
   .use(trackingRoutes)
+  .use(notificationRoutes)
   .use(personalFinanceRoutes)
   .use(businessRoutes)
   .use(assistantRoutes)

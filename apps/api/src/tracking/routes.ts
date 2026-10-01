@@ -121,7 +121,14 @@ async function refreshLearnedCategory(tx:TransactionSql,ws:string,userId:string,
   }
 }
 
-async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, input: Input, existingId?: string) {
+async function dirtyUnusualBaselines(tx:TransactionSql,ws:string,categoryId:string|null,currency:string,type:string,date:string){
+  if(type!=='expense')return;
+  const [workspace]=await q(tx,'select owner_user_id from workspaces where id=$1',[ws]);if(!workspace)return;
+  const rules=await q(tx,"select scope_key from finance_notification_rules where workspace_id=$1 and user_id=$2 and rule_type='unusual_spending' and enabled and currency=$3 and category_id is not distinct from $4::uuid",[ws,workspace.owner_user_id,currency,categoryId]);
+  for(const rule of rules)await q(tx,"insert into finance_notification_evaluation_state(workspace_id,user_id,rule_key,scope_key,period_key,state,dirty_version,processed_version) values($1,$2,'unusual_spending',$3,'dirty',jsonb_build_object('fromDate',($4::date+1)::text,'throughDate',($4::date+90)::text,'lastId',null),1,0) on conflict(workspace_id,user_id,rule_key,scope_key,period_key) do update set state=jsonb_build_object('fromDate',least(coalesce(nullif(finance_notification_evaluation_state.state->>'fromDate','')::date,(excluded.state->>'fromDate')::date),(excluded.state->>'fromDate')::date)::text,'throughDate',greatest(coalesce(nullif(finance_notification_evaluation_state.state->>'throughDate','')::date,(excluded.state->>'throughDate')::date),(excluded.state->>'throughDate')::date)::text,'lastId',null),dirty_version=finance_notification_evaluation_state.dirty_version+1,next_evaluation_at=now(),updated_at=now()",[ws,workspace.owner_user_id,rule.scope_key,date]);
+}
+
+async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, input: Input, existingId?: string, before?:any) {
   if(!['income','expense','transfer'].includes(input.type)) reject('Choose a valid transaction type.');
   if(!uuidRe.test(input.accountId)) reject('Choose an account.');
   const amount=decimal(input.amount), date=isoDate(input.date);
@@ -146,6 +153,8 @@ async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, inp
   const [row]=existingId
     ? await q(tx,'update transactions set account_id=$1,destination_account_id=$2,category_id=$3,amount=$4,currency=$5,type=$6,occurred_at=$7,notes=$8,merchant=$9,updated_by=$10,updated_at=now(),version=version+1 where workspace_id=$11 and id=$12 returning id,type,account_id as "accountId",destination_account_id as "destinationAccountId",category_id as "categoryId",amount::text,currency,occurred_at as date,notes,merchant,version',[input.accountId,input.destinationAccountId??null,input.categoryId??null,amount,account.currency,input.type,date,input.notes?.trim()??null,input.merchant?.trim()??null,actor.id,ws,id])
     : await q(tx,'insert into transactions(id,workspace_id,account_id,destination_account_id,category_id,amount,currency,type,occurred_at,notes,merchant,created_by,updated_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12) returning id,type,account_id as "accountId",destination_account_id as "destinationAccountId",category_id as "categoryId",amount::text,currency,occurred_at as date,notes,merchant,version',[id,ws,input.accountId,input.destinationAccountId??null,input.categoryId??null,amount,account.currency,input.type,date,input.notes?.trim()??null,input.merchant?.trim()??null,actor.id]);
+  if(before)await dirtyUnusualBaselines(tx,ws,before.category_id,before.currency,before.type,String(before.occurred_at).slice(0,10));
+  await dirtyUnusualBaselines(tx,ws,input.type==='expense'?input.categoryId??null:null,account.currency,input.type,date);
   if(existingId)await q(tx,'delete from transaction_tags where workspace_id=$1 and transaction_id=$2',[ws,id]);
   const journalId=randomUUID();
   await q(tx,'insert into journal_entries(id,workspace_id,transaction_id,effective_date,reason,created_by) values($1,$2,$3,$4,$5,$6)',[journalId,ws,id,date,'create',actor.id]);
@@ -158,32 +167,6 @@ async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, inp
     const [tag]=await q(tx,'select id from tags where workspace_id=$1 and id=$2 and archived_at is null',[ws,tagId]);
     if(!tag) reject('A selected tag is unavailable.');
     await q(tx,'insert into transaction_tags(workspace_id,transaction_id,tag_id) values($1,$2,$3)',[ws,id,tagId]);
-  }
-  if(input.type==='expense'&&input.categoryId){
-    const [workspace]=await q(tx,'select owner_user_id,timezone from workspaces where id=$1',[ws]);
-    const today=workspaceToday(workspace.timezone),todayDate=new Date(`${today}T00:00:00Z`);
-    const currentStart=new Date(todayDate);currentStart.setUTCDate(1);
-    const currentWeekStart=new Date(todayDate);currentWeekStart.setUTCDate(currentWeekStart.getUTCDate()-((currentWeekStart.getUTCDay()+6)%7));
-    const expenseDate=isoDate(input.date);
-    const budgets=await q(tx,`with recursive ancestors(id,parent_id) as (
-      select id,parent_id from categories where workspace_id=$1 and id=$2 union all
-      select c.id,c.parent_id from categories c join ancestors a on c.id=a.parent_id where c.workspace_id=$1
-    ) select b.id,b.category_id,b.name,b.amount::text,b.currency,b.cadence,b.alert_thresholds,c.name as category_name,
-      case when b.cadence='weekly' then $3::date else $4::date end as starts_on,
-      case when b.cadence='weekly' then ($3::date+7) else ($4::date+interval '1 month')::date end as ends_on
-      from budgets b join categories c on c.workspace_id=b.workspace_id and c.id=b.category_id
-      where b.workspace_id=$1 and b.archived_at is null and b.category_id in(select id from ancestors)`,[ws,input.categoryId,currentWeekStart.toISOString().slice(0,10),currentStart.toISOString().slice(0,10)]);
-    for(const budget of budgets){
-      if(expenseDate<budget.starts_on||expenseDate>=budget.ends_on)continue;
-      const [actual]=await q(tx,"with recursive descendants(id) as (select $2::uuid union all select c.id from categories c join descendants d on c.parent_id=d.id where c.workspace_id=$1) select coalesce(sum(amount),0)::numeric as spent from transactions where workspace_id=$1 and deleted_at is null and type='expense' and occurred_at >= $3 and occurred_at < $4 and category_id in(select id from descendants)",[ws,budget.category_id,budget.starts_on,budget.ends_on]);
-      for(const threshold of (budget.alert_thresholds as number[]).sort((a,b)=>b-a)){
-        const [crossing]=await q(tx,'select $1::numeric*100 >= $2::numeric*$3::numeric as crossed',[actual.spent,budget.amount,threshold]);
-        if(!crossing.crossed)continue;
-        const dedupe=`budget:${budget.id}:${budget.starts_on}:${threshold}`;
-        await q(tx,"insert into finance_notifications(workspace_id,user_id,kind,source_id,dedupe_key,title,message) values($1,$2,'budget-alert',$3,$4,$5,$6) on conflict(workspace_id,user_id,dedupe_key) do nothing",[ws,workspace.owner_user_id,budget.id,dedupe,`${budget.category_name} budget at ${threshold}%`,`${budget.currency} ${actual.spent} of ${budget.currency} ${budget.amount} spent in the current period.`]);
-        break;
-      }
-    }
   }
   await audit(tx,ws,actor.id,'transaction',id,'create',null,row);
   return {...row,id,journalId};
@@ -229,7 +212,7 @@ export async function processRecurringWorkspace(workspaceId:string,ownerUserId:s
 }
 
 async function reverseTransaction(tx: TransactionSql, ws: string, actor: Actor, id: string, date: string) {
-  const [old]=await q(tx,'select j.id from journal_entries j where j.workspace_id=$1 and j.transaction_id=$2 and not exists(select 1 from journal_entries r where r.workspace_id=j.workspace_id and r.reverses_entry_id=j.id) order by j.created_at desc limit 1 for update',[ws,id]);
+  const [old]=await q(tx,'select j.id from journal_entries j where j.workspace_id=$1 and j.transaction_id=$2 and j.reason in (\'create\',\'restore\') and not exists(select 1 from journal_entries r where r.workspace_id=j.workspace_id and r.reverses_entry_id=j.id) order by j.created_at desc limit 1 for update',[ws,id]);
   if(!old)return;
   const lines=await q(tx,'select ledger_account_id,debit::text,credit::text,currency from journal_lines where workspace_id=$1 and entry_id=$2',[ws,old.id]);
   const reversalId=randomUUID();
@@ -502,6 +485,9 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    if(before.version!==version)return fail(409,'STALE_TRANSACTION','This transaction changed. Refresh and try again.');
    await reverseTransaction(tx,params.workspaceId,actor,params.id,before.occurred_at);
    await q(tx,'update transactions set deleted_at=now(),deleted_by=$1,updated_by=$1,updated_at=now(),version=version+1 where id=$2',[actor.id,params.id]);
+   await dirtyUnusualBaselines(tx,params.workspaceId,before.category_id,before.currency,before.type,String(before.occurred_at).slice(0,10));
+   const [owner]=await q(tx,'select owner_user_id from workspaces where id=$1',[params.workspaceId]);
+   await q(tx,"update finance_notifications set resolved_at=coalesce(resolved_at,now()),resolution_reason='transaction_deleted',updated_at=now() where workspace_id=$1 and user_id=$2 and kind='unusual-spending' and source_type='transaction' and source_id=$3 and resolved_at is null",[params.workspaceId,owner.owner_user_id,params.id]);
    await q(tx,'delete from category_feedback where workspace_id=$1 and user_id=$2 and transaction_id=$3',[params.workspaceId,actor.id,params.id]);
    const oldMerchant=normalizedCategoryMerchant(before.merchant);
    if(oldMerchant)await refreshLearnedCategory(tx,params.workspaceId,actor.id,before.type,oldMerchant);
@@ -516,12 +502,14 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    if(before.version!==version)return fail(409,'STALE_TRANSACTION','This transaction changed. Refresh and try again.');
    const input=body as Input;
    await reverseTransaction(tx,params.workspaceId,actor,params.id,before.occurred_at);
+   const [owner]=await q(tx,'select owner_user_id from workspaces where id=$1',[params.workspaceId]);
+   await q(tx,"update finance_notifications set resolved_at=coalesce(resolved_at,now()),resolution_reason='transaction_changed',updated_at=now() where workspace_id=$1 and user_id=$2 and kind='unusual-spending' and source_type='transaction' and source_id=$3 and resolved_at is null",[params.workspaceId,owner.owner_user_id,params.id]);
    // An edited transaction is one current example. Remove the prior merchant/type
    // evidence before recording its new version so it cannot train two rules.
    await q(tx,'delete from category_feedback where workspace_id=$1 and user_id=$2 and transaction_id=$3',[params.workspaceId,actor.id,params.id]);
    const oldMerchant=normalizedCategoryMerchant(before.merchant);
    if(oldMerchant)await refreshLearnedCategory(tx,params.workspaceId,actor.id,before.type,oldMerchant);
-   const updated=await makeTransaction(tx,params.workspaceId,actor,input,params.id);
+   const updated=await makeTransaction(tx,params.workspaceId,actor,input,params.id,before);
    await learnCategory(tx,params.workspaceId,actor,updated,before.category_id);
    await audit(tx,params.workspaceId,actor.id,'transaction',params.id,'edit',before,updated);
    return {transaction:updated};
@@ -538,6 +526,9 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
      for(const line of lines)await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency) values($1,$2,$3,$4,$5,$6)',[params.workspaceId,restoreId,line.ledger_account_id,line.credit,line.debit,line.currency]);
    }
    const [restored]=await q(tx,'update transactions set deleted_at=null,deleted_by=null,updated_by=$1,updated_at=now(),version=version+1 where workspace_id=$2 and id=$3 returning id,type,category_id as "categoryId",merchant,version',[actor.id,params.workspaceId,params.id]);
+   await dirtyUnusualBaselines(tx,params.workspaceId,before.category_id,before.currency,before.type,String(before.occurred_at).slice(0,10));
+   const [owner]=await q(tx,'select owner_user_id from workspaces where id=$1',[params.workspaceId]);
+   await q(tx,"update finance_notifications set resolved_at=coalesce(resolved_at,now()),resolution_reason='transaction_restored',updated_at=now() where workspace_id=$1 and user_id=$2 and kind='unusual-spending' and source_type='transaction' and source_id=$3 and resolved_at is null",[params.workspaceId,owner.owner_user_id,params.id]);
    await learnCategory(tx,params.workspaceId,actor,restored,before.category_id);
    await audit(tx,params.workspaceId,actor.id,'transaction',params.id,'restore',before,restored);
    return {transaction:restored};

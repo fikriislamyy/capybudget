@@ -13,6 +13,7 @@
     "test:tracking": "bun --env-file=../../.env test tests/tracking",
     "test:tracking:integration": "TRACKING_INTEGRATION=1 bun --env-file=../../.env test tests/tracking",
     "test:personal-finance": "bun test tests/personal-finance ../api/tests/tracking/recurrence.test.ts",
+    "test:notifications": "bun test tests/notifications",
     "test:assistant": "bun test tests/assistant tests/tracking/recurrence.test.ts tests/personal-finance/money.test.ts",
     "test:assistant:integration": "TRACKING_INTEGRATION=1 bun --env-file=../../.env test tests/tracking/workspace.test.ts",
     "benchmark:assistant": "bun scripts/assistant-benchmark.ts",

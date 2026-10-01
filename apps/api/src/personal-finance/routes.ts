@@ -19,6 +19,9 @@ function validDate(value: unknown): value is string {
 function validAmount(value: unknown): value is string {
   return typeof value === 'string' && /^(?:0|[1-9]\d{0,14})(?:\.\d{1,4})?$/.test(value) && /[1-9]/.test(value);
 }
+function validBudgetAmount(value: unknown): value is string {
+  return typeof value === 'string' && /^(?:0|[1-9]\d{0,14})(?:\.\d{1,4})?$/.test(value);
+}
 function errorResponse(error: unknown): Response {
   const err = error as Error & { code?: string; status?: number };
   if (err.status) return fail(err.status, err.message);
@@ -61,7 +64,7 @@ async function budgetRows(tx: TransactionSql, workspaceId: string, now = new Dat
   const today = workspaceToday(workspace.timezone, now);
   const rows = await q(tx, `select b.id,b.name,b.category_id as "categoryId",c.name as "categoryName",b.cadence,b.amount::text,b.currency,
       b.alert_thresholds as "alertThresholds",p.starts_on as "periodStart",p.ends_on as "periodEnd",
-      coalesce((select sum(t.amount) from transactions t where t.workspace_id=b.workspace_id and t.deleted_at is null and t.type='expense'
+      coalesce((select sum(t.amount) from transactions t where t.workspace_id=b.workspace_id and t.deleted_at is null and t.type='expense' and t.currency=b.currency
         and t.occurred_at>=p.starts_on and t.occurred_at<p.ends_on and t.category_id in
         (with recursive descendants(id) as (select b.category_id union all select c2.id from categories c2 join descendants d on c2.parent_id=d.id where c2.workspace_id=b.workspace_id)
          select id from descendants)),0)::text as spent
@@ -79,7 +82,7 @@ export const personalFinanceRoutes = new Elysia()
   .get('/api/workspaces/:workspaceId/budgets', ({ request, params }) => scoped(request, params.workspaceId, async (tx) => ({ items: await budgetRows(tx, params.workspaceId) })))
   .post('/api/workspaces/:workspaceId/budgets', async ({ request, params }) => scoped(request, params.workspaceId, async (tx, userId) => {
     const body = await request.json() as Record<string, unknown>;
-    if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 100 || !uuid.test(String(body.categoryId)) || !validAmount(body.amount) || !['weekly', 'monthly'].includes(String(body.cadence))) return fail(422, 'Enter a name, category, positive amount, and weekly or monthly schedule.');
+    if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 100 || !uuid.test(String(body.categoryId)) || !validBudgetAmount(body.amount) || !['weekly', 'monthly'].includes(String(body.cadence))) return fail(422, 'Enter a name, category, nonnegative amount, and weekly or monthly schedule.');
     const [workspace] = await q(tx, 'select currency,timezone from workspaces where id=$1 for update', [params.workspaceId]);
     const [category] = await q(tx, "select id from categories where workspace_id=$1 and id=$2 and type='expense' and archived_at is null", [params.workspaceId, body.categoryId]);
     if (!category) return fail(422, 'Choose an active expense category in this workspace.');
@@ -103,9 +106,10 @@ export const personalFinanceRoutes = new Elysia()
   }))
   .patch('/api/workspaces/:workspaceId/budgets/:id', async ({ request, params }) => scoped(request, params.workspaceId, async (tx,userId) => {
     const body=await request.json() as Record<string,unknown>;
-    if((body.name!==undefined&&(typeof body.name!=='string'||!body.name.trim()||body.name.length>100))||(body.amount!==undefined&&!validAmount(body.amount))||(body.alertThresholds!==undefined&&(!Array.isArray(body.alertThresholds)||body.alertThresholds.length>5||body.alertThresholds.some(x=>!Number.isInteger(x)||Number(x)<1||Number(x)>1000))))return fail(422,'Enter a valid budget name, amount, or alert threshold.');
+    if((body.name!==undefined&&(typeof body.name!=='string'||!body.name.trim()||body.name.length>100))||(body.amount!==undefined&&!validBudgetAmount(body.amount))||(body.alertThresholds!==undefined&&(!Array.isArray(body.alertThresholds)||body.alertThresholds.length>5||body.alertThresholds.some(x=>!Number.isInteger(x)||Number(x)<1||Number(x)>1000))))return fail(422,'Enter a valid budget name, amount, or alert threshold.');
     const thresholds=body.alertThresholds as number[]|undefined;
-    const [updated]=await q(tx,'update budgets set name=coalesce($3,name),amount=coalesce($4::numeric,amount),alert_thresholds=coalesce($5::jsonb,alert_thresholds),updated_at=now() where workspace_id=$1 and id=$2 and archived_at is null returning id,name,amount::text,cadence,alert_thresholds as "alertThresholds"',[params.workspaceId,params.id,body.name??null,body.amount??null,thresholds?JSON.stringify([...new Set(thresholds)].sort((a,b)=>a-b)):null]);
+    const normalizedThresholds=thresholds?JSON.stringify([...new Set(thresholds)].sort((a,b)=>a-b)):null;
+    const [updated]=await q(tx,'update budgets set name=coalesce($3,name),amount=coalesce($4::numeric,amount),alert_thresholds=coalesce($5::jsonb,alert_thresholds),alert_revision=alert_revision+case when ($4::numeric is not null and $4::numeric is distinct from amount) or ($5::jsonb is not null and $5::jsonb is distinct from alert_thresholds) then 1 else 0 end,updated_at=now() where workspace_id=$1 and id=$2 and archived_at is null returning id,name,amount::text,cadence,alert_thresholds as "alertThresholds",alert_revision as "alertRevision"',[params.workspaceId,params.id,body.name??null,body.amount??null,normalizedThresholds]);
     if(updated&&(body.name!==undefined||body.amount!==undefined)){const [budget]=await q(tx,'select currency,category_id as "categoryId",starts_on as "startsOn" from budgets where workspace_id=$1 and id=$2',[params.workspaceId,params.id]);const [current]=await q(tx,'select revision,valid_from as "validFrom" from budget_revisions where workspace_id=$1 and budget_id=$2 and valid_to is null order by revision desc limit 1 for update',[params.workspaceId,params.id]);const effective=workspaceToday('UTC');if(current&&effective>String(current.validFrom)){await q(tx,'update budget_revisions set valid_to=$3 where workspace_id=$1 and budget_id=$2 and revision=$4',[params.workspaceId,params.id,effective,current.revision]);await q(tx,'insert into budget_revisions(workspace_id,budget_id,revision,cadence,amount,currency,category_id,name,valid_from,recorded_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[params.workspaceId,params.id,Number(current.revision)+1,updated.cadence,updated.amount,budget.currency,budget.categoryId,updated.name,effective,userId]);}else if(current){await q(tx,'update budget_revisions set cadence=$4,amount=$5,currency=$6,category_id=$7,name=$8,recorded_by=$9 where workspace_id=$1 and budget_id=$2 and revision=$3',[params.workspaceId,params.id,current.revision,updated.cadence,updated.amount,budget.currency,budget.categoryId,updated.name,userId]);}else{await q(tx,'insert into budget_revisions(workspace_id,budget_id,revision,cadence,amount,currency,category_id,name,valid_from,recorded_by) values($1,$2,1,$3,$4,$5,$6,$7,$8,$9)',[params.workspaceId,params.id,updated.cadence,updated.amount,budget.currency,budget.categoryId,updated.name,budget.startsOn,userId]);}}
     return updated??fail(404,'Budget not found.');
   }))
@@ -240,22 +244,6 @@ export const personalFinanceRoutes = new Elysia()
     await q(tx, 'insert into audit_logs(workspace_id,actor_user_id,entity_type,entity_id,action,after) values($1,$2,\'bill_occurrence\',$3,$4,$5::jsonb)', [params.workspaceId, userId, params.id, params.action, JSON.stringify(row)]);
     return { occurrence: row };
   }))
-  .get('/api/workspaces/:workspaceId/notifications', ({ request, params }) => scoped(request, params.workspaceId, async (tx, userId) => ({ items: await q(tx, 'select id,kind,title,message,read_at as "readAt",created_at as "createdAt" from finance_notifications where workspace_id=$1 and user_id=$2 and resolved_at is null order by created_at desc limit 100', [params.workspaceId, userId]) })))
-  .get('/api/workspaces/:workspaceId/notification-preferences', ({ request, params }) => scoped(request, params.workspaceId, async (tx, userId) => {
-    const prefs=await q(tx,"select event_type as \"eventType\",channel,enabled from finance_notification_preferences where workspace_id=$1 and user_id=$2 and event_type in ('bill-reminder','assistant-alert')",[params.workspaceId,userId]);
-    const get=(event:string,channel:string,fallback:boolean)=>prefs.find((p:any)=>p.eventType===event&&p.channel===channel)?.enabled??fallback;
-    return {emailBillReminders:get('bill-reminder','email',true),pushBillReminders:get('bill-reminder','push',false),emailAssistantAlerts:get('assistant-alert','email',false),pushAssistantAlerts:get('assistant-alert','push',false)};
-  }))
-  .put('/api/workspaces/:workspaceId/notification-preferences', async ({ request, params }) => scoped(request, params.workspaceId, async (tx, userId) => {
-    const body = await request.json() as Record<string, unknown>;
-    const fields=['emailBillReminders','pushBillReminders','emailAssistantAlerts','pushAssistantAlerts'];
-    if(fields.some((key)=>body[key]!==undefined&&typeof body[key]!=='boolean')||!fields.some((key)=>body[key]!==undefined))return fail(422,'Choose valid notification preferences.');
-    if(body.pushBillReminders===true||body.pushAssistantAlerts===true){const [subscription]=await q(tx,'select id from push_subscriptions where workspace_id=$1 and user_id=$2 limit 1',[params.workspaceId,userId]);if(!subscription)return fail(422,'Enable browser notifications on this device first.');}
-    for(const [field,event,channel] of [['emailBillReminders','bill-reminder','email'],['pushBillReminders','bill-reminder','push'],['emailAssistantAlerts','assistant-alert','email'],['pushAssistantAlerts','assistant-alert','push']] as const){const value=body[field];if(typeof value!=='boolean')continue;await q(tx,'insert into finance_notification_preferences(workspace_id,user_id,event_type,channel,enabled,updated_at) values($1,$2,$3,$4,$5,now()) on conflict(workspace_id,user_id,event_type,channel) do update set enabled=excluded.enabled,updated_at=now()',[params.workspaceId,userId,event,channel,value]);}
-    const prefs=await q(tx,"select event_type as \"eventType\",channel,enabled from finance_notification_preferences where workspace_id=$1 and user_id=$2 and event_type in ('bill-reminder','assistant-alert')",[params.workspaceId,userId]);
-    const get=(event:string,channel:string,fallback:boolean)=>prefs.find((p:any)=>p.eventType===event&&p.channel===channel)?.enabled??fallback;
-    return {emailBillReminders:get('bill-reminder','email',true),pushBillReminders:get('bill-reminder','push',false),emailAssistantAlerts:get('assistant-alert','email',false),pushAssistantAlerts:get('assistant-alert','push',false)};
-  }))
   .get('/api/push/vapid-public-key',()=>{
     const key=process.env.VAPID_PUBLIC_KEY;
     if(!key)return fail(503,'Browser push is not configured on this server.');
@@ -278,7 +266,4 @@ export const personalFinanceRoutes = new Elysia()
     await q(tx,"update finance_notification_preferences set enabled=false,updated_at=now() where workspace_id=$1 and user_id=$2 and event_type='bill-reminder' and channel='push'",[params.workspaceId,userId]);
     return new Response(null,{status:204});
   }))
-  .patch('/api/workspaces/:workspaceId/notifications/:id/read', ({ request, params }) => scoped(request, params.workspaceId, async (tx, userId) => {
-    const [row] = await q(tx, 'update finance_notifications set read_at=coalesce(read_at,now()) where workspace_id=$1 and user_id=$2 and id=$3 returning id,read_at as "readAt"', [params.workspaceId, userId, params.id]);
-    return row ?? fail(404, 'Notification not found.');
-  }));
+  ;

@@ -11,8 +11,7 @@ function decimal(value: bigint, scale: number): string {
 
 export function budgetProgress(limit: string, spent: string) {
   const scale = 4, limitAmount = scaled(limit, scale), spentAmount = scaled(spent, scale);
-  if (limitAmount <= 0n) throw new RangeError('Budget limit must be positive');
   const difference = limitAmount - spentAmount;
-  const usedPercent = Number((spentAmount * 10000n) / limitAmount) / 100;
+  const usedPercent = limitAmount === 0n ? (spentAmount === 0n ? 0 : null) : Number((spentAmount * 10000n) / limitAmount) / 100;
   return { remaining: `${difference < 0n ? '-' : ''}${decimal(difference < 0n ? -difference : difference, scale)}`, usedPercent };
 }

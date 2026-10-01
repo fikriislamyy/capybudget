@@ -6,7 +6,7 @@
   import * as Card from '$lib/components/ui/card';
   import * as Field from '$lib/components/ui/field';
   import { Input } from '$lib/components/ui/input';
-  type WorkspaceState={selectedId:string;ready:boolean}; type Budget={id:string;name:string;categoryId:string;categoryName:string;cadence:'weekly'|'monthly';amount:string;currency:string;spent:string;remaining:string;usedPercent:number;alertThresholds:number[];period:{from:string;to:string}};
+  type WorkspaceState={selectedId:string;ready:boolean}; type Budget={id:string;name:string;categoryId:string;categoryName:string;cadence:'weekly'|'monthly';amount:string;currency:string;spent:string;remaining:string;usedPercent:number|null;alertThresholds:number[];period:{from:string;to:string}};
   type Category={id:string;name:string;type:string};
   const workspace=getContext<WorkspaceState>('capybudget-workspaces'), ui=getContext<AuthUiState>(AUTH_UI_CONTEXT);
   const t=(key:Parameters<typeof financeText>[1])=>financeText(ui.locale,key);
@@ -18,7 +18,7 @@
   async function saveThresholds(event:SubmitEvent,id:string){event.preventDefault();try{const values=(thresholds[id]??'80,100').split(',').map((value)=>Number(value.trim()));const response=await fetch(`/api/workspaces/${workspace.selectedId}/budgets/${id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({alertThresholds:values})});const body=await response.json();if(!response.ok)throw new Error(body.message);await load();}catch(e){error=e instanceof Error?e.message:t('error');}}
 </script>
 <svelte:head><title>CapyBudget · {t('budgets')}</title></svelte:head>
-<div class="page-head"><div><p class="eyebrow">Personal finance</p><h1>{t('budgets')}</h1><p>Give each category a comfortable spending pond.</p></div></div>
+<div class="page-head"><div><p class="eyebrow">Personal finance</p><h1>{t('budgets')}</h1><p>Give each category a comfortable spending pond.</p><p class="caption">{t('thresholdPolicy')}</p></div></div>
 {#if error}<p role="alert" class="error">{error}</p>{/if}
 <div class="grid">
   <Card.Root><Card.Header><Card.Title>{t('addBudget')}</Card.Title><Card.Description>Weekly or calendar month. Expenses reduce the remaining amount.</Card.Description></Card.Header><Card.Content>
@@ -33,7 +33,7 @@
     {#if loading}<p>{t('loading')}</p>{:else if items.length===0}<Card.Root><Card.Content><p>{t('emptyBudgets')}</p></Card.Content></Card.Root>{:else}
       {#each items as item (item.id)}<Card.Root><Card.Header><div class="title-row"><div><Card.Title>{item.categoryName}</Card.Title><Card.Description>{item.name} · {item.cadence==='weekly'?t('weekly'):t('monthly')} · {item.period.from}—{item.period.to}</Card.Description></div><Button variant="ghost" size="sm" onclick={()=>archive(item.id)}>{t('archive')}</Button></div></Card.Header><Card.Content>
         <div class="numbers"><span>{t('spent')} <strong>{item.currency} {item.spent}</strong></span><span>{t('remaining')} <strong>{item.currency} {item.remaining}</strong></span></div>
-        <progress aria-label={`${item.categoryName} budget ${item.usedPercent.toFixed(0)}% used`} max="100" value={Math.min(100,item.usedPercent)}></progress><p class="caption">{item.usedPercent.toFixed(1)}% used</p>
+        {#if item.usedPercent===null}<p class="caption">{t('zeroBudgetSpend')}</p>{:else}<progress aria-label={`${item.categoryName} budget ${item.usedPercent.toFixed(0)}% used`} max="100" value={Math.min(100,item.usedPercent)}></progress><p class="caption">{item.usedPercent.toFixed(1)}% used</p>{/if}
         <form class="thresholds" onsubmit={(event)=>saveThresholds(event,item.id)}><label for={`thresholds-${item.id}`}>{t('thresholds')}</label><Input id={`thresholds-${item.id}`} bind:value={thresholds[item.id]} placeholder={item.alertThresholds.join(',')} /><Button variant="outline" size="sm" type="submit">{t('save')}</Button></form>
       </Card.Content></Card.Root>{/each}
     {/if}

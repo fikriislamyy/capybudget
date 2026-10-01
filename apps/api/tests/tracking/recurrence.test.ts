@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { nextOccurrenceDate, workspaceToday } from '../../src/tracking/recurrence';
+import { nextOccurrenceDate, workspaceHour, workspaceToday } from '../../src/tracking/recurrence';
 
 describe('recurrence calendar dates',()=>{
   test('keeps the original day after clamping a month end',()=>{
@@ -22,5 +22,11 @@ describe('recurrence calendar dates',()=>{
   test('uses the requested workspace timezone when deriving today',()=>{
     expect(workspaceToday('UTC',new Date('2026-09-28T17:30:00.000Z'))).toBe('2026-09-28');
     expect(workspaceToday('Asia/Jakarta',new Date('2026-09-28T17:30:00.000Z'))).toBe('2026-09-29');
+  });
+  test('releases date based reminders at the workspace local hour across DST changes',()=>{
+    expect(workspaceHour('Asia/Jakarta',new Date('2026-09-30T01:59:00.000Z'))).toBe(8);
+    expect(workspaceHour('Asia/Jakarta',new Date('2026-09-30T02:00:00.000Z'))).toBe(9);
+    expect(workspaceHour('America/New_York',new Date('2026-03-08T06:59:00.000Z'))).toBe(1);
+    expect(workspaceHour('America/New_York',new Date('2026-03-08T07:01:00.000Z'))).toBe(3);
   });
 });

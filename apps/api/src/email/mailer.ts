@@ -9,7 +9,7 @@ function getTransporter(): Transporter {
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT ?? 1025);
   if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error('SMTP_HOST and a valid SMTP_PORT are required');
+    throw Object.assign(new Error('SMTP_HOST and a valid SMTP_PORT are required'), { code: 'SMTP_CONFIG' });
   }
 
   transporter = nodemailer.createTransport({
@@ -28,6 +28,6 @@ function getTransporter(): Transporter {
 
 export async function sendEmail(message: EmailMessage, attachments?: { filename: string; content: Uint8Array; contentType: string }[]): Promise<void> {
   const from = process.env.EMAIL_FROM;
-  if (!from) throw new Error('EMAIL_FROM is required');
+  if (!from) throw Object.assign(new Error('EMAIL_FROM is required'), { code: 'SMTP_CONFIG' });
   await getTransporter().sendMail({ from, to: message.to, ...renderEmail(message), ...(attachments?.length ? { attachments: attachments.map((a) => ({ ...a, content: Buffer.from(a.content) })) } : {}) });
 }
