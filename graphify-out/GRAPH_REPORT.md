@@ -1,7 +1,7 @@
 # Graph Report - capybudget  (2026-10-02)
 
 ## Corpus Check
-- 544 files · ~554,512 words
+- 544 files · ~554,592 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 73 file(s) not represented in the graph (top: .csv 53, .Identifier 7, (none) 6)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `fd974928`
+- Built from commit: `d7cd2e01`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -542,7 +542,7 @@ Nodes (17): Accent, Applying Semantic Tokens, Background & Foreground, Border & 
 
 ### Community 74 - "devDependencies"
 Cohesion: 0.11
-Nodes (18): devDependencies, @axe-core/playwright, cn, @fontsource-variable/fredoka, @fontsource-variable/nunito-sans, @internationalized/date, @lucide/svelte, @playwright/test (+10 more)
+Nodes (19): devDependencies, @axe-core/playwright, cn, @fontsource-variable/fredoka, @fontsource-variable/nunito-sans, @internationalized/date, @lucide/svelte, @playwright/test (+11 more)
 
 ### Community 75 - "components.json"
 Cohesion: 0.12
@@ -550,7 +550,7 @@ Nodes (16): aliases, components, hooks, lib, ui, utils, iconLibrary, menuAccent 
 
 ### Community 76 - "dependencies"
 Cohesion: 0.12
-Nodes (17): dependencies, better-auth, bits-ui, @capybudget/api, echarts, @elysiajs/eden, lucide-svelte, qrcode (+9 more)
+Nodes (16): dependencies, better-auth, bits-ui, @capybudget/api, echarts, @elysiajs/eden, lucide-svelte, qrcode (+8 more)
 
 ### Community 77 - "operations/backup.ts"
 Cohesion: 0.20

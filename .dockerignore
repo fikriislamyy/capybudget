@@ -7,3 +7,13 @@ node_modules
 **/build
 **/test-results
 **/playwright-report
+!.env.example
+**/.svelte-check
+**/dist
+**/coverage
+*.log
+.agents
+.codex
+.aws
+.impeccable
+graphify-out

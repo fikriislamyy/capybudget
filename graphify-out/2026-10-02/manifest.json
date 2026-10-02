@@ -2208,8 +2208,8 @@
     "semantic_hash": ""
   },
   "apps/web/src/routes/(app)/+layout.server.ts": {
-    "mtime": 1790920650.0044606,
-    "seen": 1790920824.8836582,
+    "mtime": 1790945925.839163,
+    "seen": 1790947880.8673673,
     "ast_hash": "6a55066270739968b495ab9d0e8598ab",
     "semantic_hash": ""
   },
@@ -2910,9 +2910,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790941094.1388774,
-    "seen": 1790941102.9588993,
-    "ast_hash": "00921056988ae973a80d615ff8d41f5b",
+    "mtime": 1790947857.4176261,
+    "seen": 1790947880.8695157,
+    "ast_hash": "8c02711de4668f9200897f2ae5d6a36a",
     "semantic_hash": ""
   },
   "apps/web/src/app.html": {
@@ -2979,12 +2979,6 @@
     "mtime": 1790853351.2830436,
     "seen": 1790914789.528558,
     "ast_hash": "3e07d5b7117fa07021542d6312dac886",
-    "semantic_hash": ""
-  },
-  "ladning.md": {
-    "mtime": 1790862426.9234512,
-    "seen": 1790914789.5285594,
-    "ast_hash": "edb4645fe131baf2929786e1e778ae16",
     "semantic_hash": ""
   },
   "apps/web/static/android-chrome-192x192.png": {
@@ -3402,15 +3396,15 @@
     "semantic_hash": ""
   },
   "docs/deployment/examples/deploy.sh": {
-    "mtime": 1790940314.3077898,
-    "seen": 1790941102.9572291,
-    "ast_hash": "a784b5465c3622ac1d63241ac8218130",
+    "mtime": 1790947857.4165668,
+    "seen": 1790947880.8682675,
+    "ast_hash": "ebce6c162b23510f7deb1757b06376fa",
     "semantic_hash": ""
   },
   "docs/deployment-jenkins.md": {
-    "mtime": 1790940596.523109,
-    "seen": 1790941102.9589553,
-    "ast_hash": "48a15ff7465f39d9ba8df023be577cc6",
+    "mtime": 1790947857.4157465,
+    "seen": 1790947880.8695602,
+    "ast_hash": "29b74075deca3063cdfa7aa05d90772c",
     "semantic_hash": ""
   },
   "docs/deployment/examples/compose.jenkins.yml": {
@@ -3432,9 +3426,9 @@
     "semantic_hash": ""
   },
   "docs/free-vps-setup.md": {
-    "mtime": 1790940760.1099086,
-    "seen": 1790941102.95896,
-    "ast_hash": "1392cb83d62e9515bff19b63776143dd",
+    "mtime": 1790947857.4116762,
+    "seen": 1790947880.8696115,
+    "ast_hash": "49ef4f8c408125b7259c5cb3a1df7964",
     "semantic_hash": ""
   }
 }

@@ -48,13 +48,14 @@ Start with DNS-only records if using Cloudflare. The sample trusts exactly one p
 
 ### 3.1 Configure the production SvelteKit adapter
 
-The project currently uses `@sveltejs/adapter-auto`. Install the Node adapter:
+The repository now uses the Node adapter. Keep SvelteKit on the compatible 2.x release used by this app; installing an unrestricted `latest` adapter can pull in SvelteKit 3, which requires an application migration. For a checkout that still needs this preparation:
 
 ```sh
-bun add --cwd apps/web -d @sveltejs/adapter-node
+bun add --cwd apps/web @sveltejs/kit@2.70.3
+bun add --cwd apps/web -d @sveltejs/adapter-node@5.5.7
 ```
 
-Change only the adapter import in `apps/web/svelte.config.js`:
+Confirm `apps/web/svelte.config.js` uses this configuration:
 
 ```js
 import adapter from '@sveltejs/adapter-node';
@@ -90,7 +91,7 @@ bun run check
 bun run build
 ```
 
-Run the project's integration/browser suites against disposable test infrastructure before approving a release, never against production. Commit all required source files, including currently untracked `shared/` files, before pushing. Jenkins uploads **only committed files** using `git archive`; a working local copy is not sufficient. Do not blindly `git add .` when credentials or local tooling files may be present.
+Run the project's integration/browser suites against disposable test infrastructure before approving a release, never against production. Commit all required source files, including `shared/`, before pushing. Jenkins uploads **only committed files** using `git archive`; a working local copy is not sufficient. Do not blindly `git add .` when credentials or local tooling files may be present.
 
 ## 4. Configure production secrets on the VPS
 
