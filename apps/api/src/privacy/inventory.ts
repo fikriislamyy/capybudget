@@ -18,6 +18,7 @@ export const workspaceTables = [
   "savings_goals",
   "goal_contributions",
   "bills",
+  "bill_group_forecast_settings",
   "bill_occurrences",
   "finance_notifications",
   "finance_notification_preferences",

@@ -151,10 +151,10 @@ export const personalFinanceRoutes = new Elysia()
     const today = workspaceToday(workspace.timezone);
     const horizon = new Date(`${today}T00:00:00Z`); horizon.setUTCDate(horizon.getUTCDate() + 90);
     const through = horizon.toISOString().slice(0, 10);
-    const active = await q(tx, 'select * from bills where workspace_id=$1 and enabled and archived_at is null and next_due_date<=$2 order by next_due_date limit 200', [params.workspaceId, through]);
+    const active = await q(tx, 'select * from bills where workspace_id=$1 and enabled and archived_at is null and next_due_date<=$2 and (end_date is null or next_due_date<=end_date) order by next_due_date limit 200', [params.workspaceId, through]);
     for (const bill of active) {
       let due = bill.next_due_date as string, count = 0;
-      while (due <= through && count++ < 100) {
+      while (due <= through && (!bill.end_date || due <= bill.end_date) && count++ < 100) {
         await q(tx, 'insert into bill_occurrences(workspace_id,bill_id,due_on,name,amount,currency) values($1,$2,$3,$4,$5,$6) on conflict do nothing', [params.workspaceId, bill.id, due, bill.name, bill.amount, bill.currency]);
         if (bill.frequency === 'once') break;
         const cadence = bill.frequency as 'week' | 'month' | 'year';
@@ -164,7 +164,7 @@ export const personalFinanceRoutes = new Elysia()
       }
       await q(tx, "update bills set next_due_date=$3,enabled=case when frequency='once' and exists(select 1 from bill_occurrences where workspace_id=$1 and bill_id=$2) then false else enabled end,updated_at=now() where workspace_id=$1 and id=$2", [params.workspaceId, bill.id, due]);
     }
-    const items = await q(tx, "select o.id,o.bill_id as \"billId\",o.name,o.amount::text,o.currency,o.due_on as \"dueOn\",o.status,(o.due_on< $2::date and o.status='unpaid') as overdue,b.reminder_days as \"reminderDays\",coalesce(o.payment_account_id,b.payment_account_id) as \"paymentAccountId\",o.expected_payment_on as \"expectedPaymentOn\",o.deferrable_until as \"deferrableUntil\",o.transaction_id as \"transactionId\",b.recurring_rule_id as \"recurringRuleId\" from bill_occurrences o join bills b on b.workspace_id=o.workspace_id and b.id=o.bill_id where o.workspace_id=$1 and o.due_on >= ($2::date - interval '30 days') order by o.due_on limit 300", [params.workspaceId, today]);
+    const items = await q(tx, "select o.id,o.bill_id as \"billId\",o.name,o.amount::text,o.currency,o.due_on::text as \"dueOn\",o.status,(o.due_on< $2::date and o.status='unpaid') as overdue,b.reminder_days as \"reminderDays\",b.frequency,b.interval,b.anchor_date::text as \"anchorDate\",b.payment_account_id as \"schedulePaymentAccountId\",coalesce(o.payment_account_id,case when g.has_payment_account then g.payment_account_id else b.payment_account_id end) as \"paymentAccountId\",coalesce(o.expected_payment_on,case when o.status='unpaid' then o.due_on+(case when g.has_expected_offset then g.expected_payment_offset_days else b.expected_payment_offset_days end) end)::text as \"expectedPaymentOn\",coalesce(o.deferrable_until,case when o.status='unpaid' then o.due_on+(case when g.has_deferrable_offset then g.deferrable_offset_days else b.deferrable_offset_days end) end)::text as \"deferrableUntil\",o.transaction_id as \"transactionId\",b.recurring_rule_id as \"recurringRuleId\" from bill_occurrences o join bills b on b.workspace_id=o.workspace_id and b.id=o.bill_id left join bill_group_forecast_settings g on g.workspace_id=o.workspace_id and g.name=o.name and g.due_day=extract(day from o.due_on) and o.status='unpaid' where o.workspace_id=$1 and o.due_on >= ($2::date - interval '30 days') order by o.due_on limit 300", [params.workspaceId, today]);
     return { items };
   }))
   .post('/api/workspaces/:workspaceId/bills', async ({ request, params }) => scoped(request, params.workspaceId, async (tx, userId) => {
@@ -175,8 +175,33 @@ export const personalFinanceRoutes = new Elysia()
     if (reminderDays.length > 8 || reminderDays.some((day) => !Number.isInteger(day) || Number(day) < 0 || Number(day) > 90)) return fail(422, 'Reminder lead time must be between 0 and 90 days.');
     if(body.categoryId!=null){if(!uuid.test(String(body.categoryId)))return fail(422,'Choose an expense category.');const [category]=await q(tx,"select id from categories where workspace_id=$1 and id=$2 and type='expense' and archived_at is null",[params.workspaceId,body.categoryId]);if(!category)return fail(422,'Choose an active expense category in this workspace.');}
     const interval = Number.isInteger(body.interval) && Number(body.interval) > 0 && Number(body.interval) <= 365 ? Number(body.interval) : 1;
-    const [bill] = await q(tx, 'insert into bills(workspace_id,name,amount,currency,category_id,frequency,interval,anchor_date,next_due_date,end_date,reminder_days,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10,$11) returning id,name,amount::text,currency,frequency,interval,anchor_date as "anchorDate",next_due_date as "nextDueDate",end_date as "endDate",reminder_days as "reminderDays"', [params.workspaceId, body.name.trim(), body.amount, workspace.currency, body.categoryId ?? null, body.frequency, interval, body.dueOn, body.endDate ?? null, reminderDays, userId]);
-    return Response.json({ bill }, { status: 201 });
+    const occurrenceCount = body.occurrenceCount;
+    if (occurrenceCount !== undefined && (!Number.isInteger(occurrenceCount) || Number(occurrenceCount) < 1 || Number(occurrenceCount) > 300)) return fail(422, 'Number of bills must be a whole number from 1 to 300.');
+    if (body.frequency === 'once' && occurrenceCount !== undefined && occurrenceCount !== 1) return fail(422, 'A one-time bill can only have one due date.');
+    if (body.endDate != null && (!validDate(body.endDate) || body.endDate < body.dueOn)) return fail(422, 'The end date must be a valid date on or after the first due date.');
+    let endDate = body.endDate ?? null;
+    let dates: string[] | null = null;
+    if (occurrenceCount !== undefined) {
+      try {
+        dates = Array.from({ length: Number(occurrenceCount) }, (_, index) => body.frequency === 'once' ? body.dueOn as string : nextOccurrenceDate(body.dueOn as string, body.frequency as 'week' | 'month' | 'year', interval, index));
+      } catch { return fail(422, 'The bill schedule exceeds the supported date range.'); }
+      if (dates.some(date => !validDate(date))) return fail(422, 'The bill schedule exceeds the supported date range.');
+      const lastDate = dates[dates.length - 1]!;
+      if (body.endDate != null && body.endDate !== lastDate) return fail(422, 'The end date must match the final due date when a bill count is provided.');
+      endDate = lastDate;
+    }
+    const [bill] = await q(tx, 'insert into bills(workspace_id,name,amount,currency,category_id,frequency,interval,anchor_date,next_due_date,end_date,reminder_days,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10,$11) returning id,name,amount::text,currency,frequency,interval,anchor_date as "anchorDate",next_due_date as "nextDueDate",end_date as "endDate",reminder_days as "reminderDays"', [params.workspaceId, body.name.trim(), body.amount, workspace.currency, body.categoryId ?? null, body.frequency, interval, body.dueOn, endDate, reminderDays, userId]);
+    if (dates) {
+      // Create the complete finite schedule in the same transaction as its parent.
+      // INSERT ... SELECT needs explicit parameter types. Bind dates as text
+      // rather than relying on the unsafe-query driver's array inference.
+      await q(tx, "insert into bill_occurrences(workspace_id,bill_id,due_on,name,amount,currency) select $1::uuid,$2::uuid,due_on,$4::text,$5::numeric,$6::varchar(3) from unnest(string_to_array($3::text, ',')::date[]) as dates(due_on) on conflict do nothing", [params.workspaceId, bill.id, dates.join(','), bill.name, bill.amount, bill.currency]);
+      // Keep the schedule enabled for forecasts and reminders; the end date
+      // prevents GET requests or workers from creating any extra occurrences.
+      await q(tx, 'update bills set next_due_date=$3,updated_at=now() where workspace_id=$1 and id=$2', [params.workspaceId, bill.id, endDate]);
+      bill.nextDueDate = endDate;
+    }
+    return Response.json({ bill: { ...bill, occurrenceCount: occurrenceCount ?? null } }, { status: 201 });
   }))
   .patch('/api/workspaces/:workspaceId/bills/:id/forecast-settings', async ({ request, params }) => scoped(request, params.workspaceId, async (tx, userId) => {
     if (!uuid.test(params.id)) return fail(400, 'Invalid bill ID.');
@@ -191,7 +216,7 @@ export const personalFinanceRoutes = new Elysia()
     }
     if (body.recurringRuleId) {
       if (bill.frequency === 'once') return fail(422, 'A one-time bill cannot be linked to a recurring rule.');
-      const [rule] = body.recurringRuleId===null?[{id:null}]:await q(tx, "select id from recurring_rules where workspace_id=$1 and id=$2 and status='active' and type='expense' and currency=$3 and amount=$4::numeric and frequency=$5 and interval=$6 and anchor_date=$7::date and ($8::uuid is null or account_id=$8::uuid)", [params.workspaceId, body.recurringRuleId, bill.currency, bill.amount, bill.frequency, bill.interval, bill.anchorDate, bill.paymentAccountId]);
+      const [rule] = body.recurringRuleId===null?[{id:null}]:await q(tx, "select id from recurring_rules where workspace_id=$1 and id=$2 and status='active' and type='expense' and currency=$3 and amount=$4::numeric and frequency=$5 and interval=$6 and anchor_date=$7::date and ($8::uuid is null or account_id=$8::uuid)", [params.workspaceId, body.recurringRuleId, bill.currency, bill.amount, bill.frequency, bill.interval, bill.anchorDate, body.paymentAccountId === undefined ? bill.paymentAccountId : body.paymentAccountId]);
       if (!rule) return fail(422, 'Choose a recurring expense with the same amount, currency, schedule, and payment account.');
     }
     const [updated] = await q(tx, 'update bills set payment_account_id=case when $3::boolean then $4::uuid else payment_account_id end,recurring_rule_id=case when $5::boolean then $6::uuid else recurring_rule_id end,updated_at=now() where workspace_id=$1 and id=$2 returning id,payment_account_id as "paymentAccountId",recurring_rule_id as "recurringRuleId"', [params.workspaceId, params.id, body.paymentAccountId !== undefined, body.paymentAccountId ?? null, body.recurringRuleId !== undefined, body.recurringRuleId ?? null]);
@@ -200,20 +225,27 @@ export const personalFinanceRoutes = new Elysia()
   }))
   .patch('/api/workspaces/:workspaceId/bill-occurrences/:id/forecast-settings', async ({ request, params }) => scoped(request, params.workspaceId, async (tx, userId) => {
     if (!uuid.test(params.id)) return fail(400, 'Invalid bill occurrence ID.');
-    const body = await request.json() as { paymentAccountId?: unknown; expectedPaymentOn?: unknown; deferrableUntil?: unknown; transactionId?: unknown; recurringRuleId?: unknown };
+    const body = await request.json() as { paymentAccountId?: unknown; expectedPaymentOn?: unknown; deferrableUntil?: unknown; transactionId?: unknown; recurringRuleId?: unknown; scope?: 'occurrence'|'series' };
+    if (body.scope !== undefined && !['occurrence','series'].includes(body.scope)) return fail(422, 'Choose a valid settings scope.');
     if (body.paymentAccountId !== undefined && body.paymentAccountId !== null && !uuid.test(String(body.paymentAccountId))) return fail(422, 'Choose a valid payment account.');
     if (body.transactionId !== undefined && body.transactionId !== null && !uuid.test(String(body.transactionId))) return fail(422, 'Choose a valid transaction.');
     if (body.recurringRuleId !== undefined && body.recurringRuleId !== null && !uuid.test(String(body.recurringRuleId))) return fail(422, 'Choose a valid recurring expense.');
     if (body.expectedPaymentOn !== undefined && body.expectedPaymentOn !== null && !validDate(body.expectedPaymentOn)) return fail(422, 'Choose a valid expected payment date.');
     if (body.deferrableUntil !== undefined && body.deferrableUntil !== null && !validDate(body.deferrableUntil)) return fail(422, 'Choose a valid flexibility end date.');
-    const [occurrence] = await q(tx, 'select o.id,o.bill_id as "billId",o.due_on as "dueOn",o.amount::text,o.currency,o.payment_account_id as "occurrencePaymentAccountId",b.frequency,b.interval,b.anchor_date as "anchorDate",b.payment_account_id as "billPaymentAccountId",r.account_id as "recurringAccountId" from bill_occurrences o join bills b on b.workspace_id=o.workspace_id and b.id=o.bill_id left join recurring_rules r on r.workspace_id=b.workspace_id and r.id=b.recurring_rule_id where o.workspace_id=$1 and o.id=$2 for update of o,b', [params.workspaceId, params.id]);
+    if(body.scope==='series') {
+      const [group]=await q(tx,'select name,due_on::text as "dueOn" from bill_occurrences where workspace_id=$1 and id=$2',[params.workspaceId,params.id]);
+      if(!group) return fail(404,'Bill occurrence not found.');
+      // Serialize saves for the same display group before acquiring occurrence locks.
+      await q(tx,'select pg_advisory_xact_lock(hashtextextended($1,0))',[JSON.stringify([params.workspaceId,group.name,Number(String(group.dueOn).slice(8,10))])]);
+    }
+    const [occurrence] = await q(tx, 'select o.id,o.name,o.bill_id as "billId",o.due_on::text as "dueOn",o.amount::text,o.currency,o.status,o.transaction_id as "transactionId",o.payment_account_id as "occurrencePaymentAccountId",b.frequency,b.interval,b.archived_at as "archivedAt",b.anchor_date::text as "anchorDate",b.payment_account_id as "billPaymentAccountId",r.account_id as "recurringAccountId" from bill_occurrences o join bills b on b.workspace_id=o.workspace_id and b.id=o.bill_id left join recurring_rules r on r.workspace_id=b.workspace_id and r.id=b.recurring_rule_id where o.workspace_id=$1 and o.id=$2 for update of o,b', [params.workspaceId, params.id]);
     if (!occurrence) return fail(404, 'Bill occurrence not found.');
+    if (body.scope==='series' && (occurrence.archivedAt||occurrence.status!=='unpaid'||occurrence.transactionId||body.transactionId)) return fail(422, 'Share settings from an unpaid bill without a linked payment.');
     if (body.deferrableUntil && String(body.deferrableUntil) < String(occurrence.dueOn)) return fail(422, 'The flexibility date cannot be before the bill due date.');
     if (body.recurringRuleId !== undefined) {
       if (body.recurringRuleId !== null && occurrence.frequency === 'once') return fail(422, 'A one-time bill cannot be linked to a recurring rule.');
-      const [rule] = body.recurringRuleId===null?[{id:null}]:await q(tx, "select id from recurring_rules where workspace_id=$1 and id=$2 and status='active' and type='expense' and currency=$3 and amount=$4::numeric and frequency=$5 and interval=$6 and anchor_date=$7::date and ($8::uuid is null or account_id=$8::uuid)", [params.workspaceId, body.recurringRuleId, occurrence.currency, occurrence.amount, occurrence.frequency, occurrence.interval, occurrence.anchorDate, body.paymentAccountId ?? occurrence.billPaymentAccountId]);
+      const [rule] = body.recurringRuleId===null?[{id:null}]:await q(tx, "select id from recurring_rules where workspace_id=$1 and id=$2 and status='active' and type='expense' and currency=$3 and amount=$4::numeric and frequency=$5 and interval=$6 and anchor_date=$7::date and ($8::uuid is null or account_id=$8::uuid)", [params.workspaceId, body.recurringRuleId, occurrence.currency, occurrence.amount, occurrence.frequency, occurrence.interval, occurrence.anchorDate, body.scope==='series' ? (body.paymentAccountId===undefined?occurrence.billPaymentAccountId:body.paymentAccountId) : ((body.paymentAccountId === undefined ? occurrence.occurrencePaymentAccountId : body.paymentAccountId) ?? occurrence.billPaymentAccountId)]);
       if (!rule) return fail(422, 'Choose a recurring expense with the same amount, currency, schedule, and payment account.');
-      await q(tx, 'update bills set recurring_rule_id=$3,updated_at=now() where workspace_id=$1 and id=$2', [params.workspaceId, occurrence.billId, body.recurringRuleId]);
     }
     const accountId = body.paymentAccountId === undefined ? undefined : body.paymentAccountId;
     if (accountId) {
@@ -228,6 +260,40 @@ export const personalFinanceRoutes = new Elysia()
       const [workspace] = await q(tx, 'select timezone from workspaces where id=$1', [params.workspaceId]);
       if (String(transaction.date) > workspaceToday(workspace.timezone)) return fail(422, 'A future transaction cannot settle a bill.');
       linkedAccountId = transaction.accountId;
+    }
+    if (body.scope==='series') {
+      const daysFromDue=(value:unknown)=>value==null?null:Math.round((Date.parse(String(value).slice(0,10)+'T00:00:00Z')-Date.parse(String(occurrence.dueOn).slice(0,10)+'T00:00:00Z'))/86400000);
+      const expectedOffset=daysFromDue(body.expectedPaymentOn),flexibleOffset=daysFromDue(body.deferrableUntil);
+      if ((expectedOffset!==null&&Math.abs(expectedOffset)>365)||(flexibleOffset!==null&&(flexibleOffset<0||flexibleOffset>365))) return fail(422,'Shared dates must be within 365 days of each bill due date.');
+      const day=Number(String(occurrence.dueOn).slice(8,10));
+      // Group membership is exact name + due-date day, within this workspace.
+      const targets=await q(tx, `select o.id,o.currency from bill_occurrences o join bills b on b.workspace_id=o.workspace_id and b.id=o.bill_id
+        where o.workspace_id=$1 and o.name=$2 and extract(day from o.due_on)=$3 and o.status='unpaid' and o.transaction_id is null and b.archived_at is null
+        order by o.id for update of o`,[params.workspaceId,occurrence.name,day]);
+      if(accountId && targets.some(target=>target.currency!==occurrence.currency)) return fail(422,'This group includes different currencies. Choose no shared payment account or update those bills individually.');
+      await q(tx, `insert into bill_group_forecast_settings(workspace_id,name,due_day,has_payment_account,payment_account_id,has_expected_offset,expected_payment_offset_days,has_deferrable_offset,deferrable_offset_days)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        on conflict(workspace_id,name,due_day) do update set
+        payment_account_id=case when excluded.has_payment_account then excluded.payment_account_id else bill_group_forecast_settings.payment_account_id end,
+        has_payment_account=bill_group_forecast_settings.has_payment_account or excluded.has_payment_account,
+        expected_payment_offset_days=case when excluded.has_expected_offset then excluded.expected_payment_offset_days else bill_group_forecast_settings.expected_payment_offset_days end,
+        has_expected_offset=bill_group_forecast_settings.has_expected_offset or excluded.has_expected_offset,
+        deferrable_offset_days=case when excluded.has_deferrable_offset then excluded.deferrable_offset_days else bill_group_forecast_settings.deferrable_offset_days end,
+        has_deferrable_offset=bill_group_forecast_settings.has_deferrable_offset or excluded.has_deferrable_offset,updated_at=now()`,
+        [params.workspaceId,occurrence.name,day,body.paymentAccountId!==undefined,body.paymentAccountId??null,body.expectedPaymentOn!==undefined,expectedOffset,body.deferrableUntil!==undefined,flexibleOffset]);
+      // A recurring rule has schedule-specific validation; it belongs only to this schedule.
+      if(body.recurringRuleId!==undefined) await q(tx,'update bills set recurring_rule_id=$3,updated_at=now() where workspace_id=$1 and id=$2',[params.workspaceId,occurrence.billId,body.recurringRuleId]);
+      const changed=await q(tx, `update bill_occurrences o set payment_account_id=case when $4::boolean then $5::uuid else o.payment_account_id end,
+        expected_payment_on=case when $6::boolean then o.due_on+$7::integer else o.expected_payment_on end,
+        deferrable_until=case when $8::boolean then o.due_on+$9::integer else o.deferrable_until end
+        where o.workspace_id=$1 and o.name=$2 and extract(day from o.due_on)=$3 and o.status='unpaid' and o.transaction_id is null
+        and exists(select 1 from bills b where b.workspace_id=o.workspace_id and b.id=o.bill_id and b.archived_at is null) returning o.id`,
+        [params.workspaceId,occurrence.name,day,body.paymentAccountId!==undefined,body.paymentAccountId??null,body.expectedPaymentOn!==undefined,expectedOffset,body.deferrableUntil!==undefined,flexibleOffset]);
+      await q(tx, "insert into audit_logs(workspace_id,actor_user_id,entity_type,entity_id,action,after) values($1,$2,'bill',$3,'share_forecast_settings',$4::jsonb)",[params.workspaceId,userId,occurrence.billId,JSON.stringify({groupName:occurrence.name,dueDay:day,paymentAccountId:body.paymentAccountId,recurringRuleId:body.recurringRuleId,expectedOffset,flexibleOffset,affectedCount:changed.length})]);
+      return {scope:'series',affectedCount:changed.length};
+    }
+    if (body.recurringRuleId !== undefined) {
+      await q(tx, 'update bills set recurring_rule_id=$3,updated_at=now() where workspace_id=$1 and id=$2', [params.workspaceId, occurrence.billId, body.recurringRuleId]);
     }
     const [updated] = await q(tx, "update bill_occurrences set payment_account_id=case when $3::boolean then $4::uuid when $9::boolean and $10::uuid is not null then $11::uuid else payment_account_id end,expected_payment_on=case when $5::boolean then $6::date else expected_payment_on end,deferrable_until=case when $7::boolean then $8::date else deferrable_until end,transaction_id=case when $9::boolean then $10::uuid else transaction_id end,status=case when $9::boolean then case when $10::uuid is null then 'unpaid' else 'paid' end else status end,paid_at=case when $9::boolean and $10::uuid is not null then coalesce(paid_at,now()) when $9::boolean then null else paid_at end where workspace_id=$1 and id=$2 returning id,status,transaction_id as \"transactionId\",payment_account_id as \"paymentAccountId\",expected_payment_on as \"expectedPaymentOn\",deferrable_until as \"deferrableUntil\"", [params.workspaceId, params.id, body.paymentAccountId !== undefined, body.paymentAccountId ?? null, body.expectedPaymentOn !== undefined, body.expectedPaymentOn ?? null, body.deferrableUntil !== undefined, body.deferrableUntil ?? null, body.transactionId !== undefined, body.transactionId ?? null, linkedAccountId]);
     await q(tx, "insert into audit_logs(workspace_id,actor_user_id,entity_type,entity_id,action,after) values($1,$2,'bill_occurrence',$3,'forecast_settings',$4::jsonb)", [params.workspaceId, userId, params.id, JSON.stringify(updated)]);

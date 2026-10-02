@@ -12,7 +12,10 @@ test('security settings, PIN API boundary, platform WebAuthn, session list, and 
  }
  expect(otp).toHaveLength(6);
  expect((await context.request.post('/api/auth/email-otp/verify-email',{data:{email,otp}})).ok()).toBeTruthy();
- await page.goto('/login');await page.getByLabel('Email address',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/dashboard');
+ await page.goto('/login');await page.getByLabel('Email address',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/onboarding');
+ expect((await context.request.post('/api/onboarding/provision',{data:{usageType:'personal',currency:'IDR',language:'en'}})).ok()).toBeTruthy();
+ expect((await context.request.post('/api/onboarding/finish',{data:{}})).ok()).toBeTruthy();
+ await page.goto('/dashboard');
  const workspaces=await context.request.get('/api/workspaces');const workspace=(await workspaces.json()).items[0];expect((await context.request.post('/api/workspaces/'+workspace.id+'/accounts',{data:{name:'Privacy wallet',kind:'cash',openingBalance:'123456'}})).ok()).toBeTruthy();
  const second=await browser.newContext({baseURL:new URL(page.url()).origin});
  expect((await second.request.post('/api/auth/sign-in/email',{data:{email,password},headers:{origin:new URL(page.url()).origin}})).ok()).toBeTruthy();
@@ -21,7 +24,7 @@ test('security settings, PIN API boundary, platform WebAuthn, session list, and 
  await otherPage.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(otherPage.getByText('Synced wallet',{exact:true})).toBeVisible();
  await second.setOffline(true);await expect(otherPage.getByText('You are offline. Changes cannot be saved.',{exact:true})).toBeVisible();await second.setOffline(false);
  await otherPage.addInitScript(()=>{Object.defineProperty(Storage.prototype,'getItem',{value(){throw new DOMException('Storage blocked','SecurityError');}});Object.defineProperty(Storage.prototype,'setItem',{value(){throw new DOMException('Storage blocked','SecurityError');}});});
- await otherPage.reload();await expect(otherPage.locator('.balance').first()).toContainText('••••••');
+ await otherPage.reload();await expect(otherPage.locator('.money').first()).toContainText('••••••');
  await second.close();
  await page.getByRole('link',{name:'Security',exact:true}).click();await expect(page.getByRole('heading',{name:'Security and devices'})).toBeVisible();
  await page.getByLabel('Password',{exact:true}).fill(password);await page.getByLabel('New PIN (6–8 digits)').fill('654321');await page.getByRole('button',{name:'Set PIN',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Security settings updated.');
@@ -32,8 +35,8 @@ test('security settings, PIN API boundary, platform WebAuthn, session list, and 
  await page.getByRole('link',{name:'Security',exact:true}).click();await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Register device security'}).click();await expect(page.getByRole('status')).toHaveText('Security settings updated.');
  await context.request.post('/api/security/lock',{data:{}});await page.goto('/dashboard');await page.waitForURL('**/unlock');await page.getByRole('button',{name:'Use device security',exact:true}).click();await page.waitForURL('**/dashboard');
  const listing=await context.request.get('/api/security/sessions');const sessions=(await listing.json()).items;expect(sessions.every((s:Record<string,unknown>)=>!('token' in s))).toBeTruthy();
- await page.getByRole('button',{name:'Hide amounts',exact:true}).click();await page.getByRole('link',{name:'Accounts',exact:true}).click();await expect(page.locator('.balance').first()).toContainText('••••••');
- await page.setViewportSize({width:360,height:800});await page.getByRole('link',{name:'Security',exact:true}).click();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
- await page.evaluate(()=>{(window as any).__securityLocaleMarker='kept';});await page.getByRole('button',{name:'Bahasa Indonesia'}).click();await expect(page.getByRole('heading',{name:'Keamanan dan perangkat'})).toBeVisible();expect(await page.evaluate(()=>(window as any).__securityLocaleMarker)).toBe('kept');await page.emulateMedia({reducedMotion:'reduce'});await page.getByRole('button',{name:'Toggle dark mode'}).click();await expect(page.locator('html')).toHaveClass(/dark/);
+ await page.getByRole('button',{name:'Hide amounts',exact:true}).click();await page.getByRole('link',{name:'Accounts',exact:true}).click();await expect(page.locator('.money').first()).toContainText('••••••');
+ await page.setViewportSize({width:360,height:800});await page.getByRole('button',{name:'More',exact:true}).click();await page.getByRole('dialog').getByRole('link',{name:'Security',exact:true}).click();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+ await page.evaluate(()=>{(window as any).__securityLocaleMarker='kept';});await page.getByRole('button',{name:'More',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Bahasa Indonesia'}).click();await page.keyboard.press('Escape');await expect(page.getByRole('heading',{name:'Keamanan dan perangkat'})).toBeVisible();expect(await page.evaluate(()=>(window as any).__securityLocaleMarker)).toBe('kept');await page.emulateMedia({reducedMotion:'reduce'});await page.getByRole('button',{name:'Menu lainnya',exact:true}).click();for(let i=0;i<3&&!await page.locator('html').evaluate(e=>e.classList.contains('dark'));i++)await page.getByRole('dialog').getByRole('button',{name:/^Tema:/}).click();await page.keyboard.press('Escape');await expect(page.locator('html')).toHaveClass(/dark/);
  await cdp.detach();
 });

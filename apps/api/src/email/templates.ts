@@ -1,86 +1,126 @@
+import { formatDate, formatDatesInText } from '../../../../shared/dates';
 import type { EmailMessage } from './types';
+import { appLink, codeCard, detailCard, emailLayout, paragraph } from './layout';
 
 const copy = {
   en: {
     verificationSubject: 'Your CapyBudget verification code',
-    verificationTitle: 'Verify your email',
-    verificationText: 'Enter this code in CapyBudget to verify your email address:',
+    verificationTitle: 'A little check, then you’re in',
+    verificationText: 'Enter this code in CapyBudget to verify your email address.',
+    codeLabel: 'Your verification code',
     resetSubject: 'Reset your CapyBudget password',
-    resetTitle: 'Reset your password',
-    resetText: 'Use the link below to choose a new password:',
-    expires: 'This message expires in 10 minutes.',
+    resetTitle: 'Let’s get you back in',
+    resetText: 'Choose a new password to get back to your money pond.',
+    resetAction: 'Reset password',
+    expires: 'This code expires in 10 minutes. Keep it to yourself.',
     resetExpires: 'This link expires in 30 minutes.',
-    ignore: "If you didn't request this, you can safely ignore this email."
-    ,invoiceSubject: 'Your invoice from CapyBudget', invoiceText: 'Please find your invoice attached.', billSubject: 'A bill is coming up · CapyBudget', billTitle: 'A bill is coming up', billText: 'is due on',
-    billIntro: 'A gentle reminder for your upcoming bill:',
-    invoiceTextShort: 'Invoice',
+    ignore: 'If you didn’t request this, you can safely ignore this email.',
+    fallback: 'Button not working? Copy this link into your browser:',
+    security: 'ACCOUNT SECURITY', business: 'BUSINESS', personal: 'YOUR MONEY', assistant: 'A NOTE FROM CAPY',
+    invoiceSubject: 'Your invoice from CapyBudget',
+    invoiceTitle: 'Your invoice is ready',
+    invoiceText: 'Your invoice is attached as a PDF. You can download it to review the details or keep a copy for your records.',
+    invoiceLabel: 'Invoice number',
     invoiceReminderSubject: 'A payment reminder for your invoice',
-    assistantAlertSubject: 'A cashflow update · CapyBudget', assistantAlertOpen: 'Open CapyBudget to review your cashflow update.',
+    invoiceReminderTitle: 'A friendly payment reminder',
+    billSubject: 'A bill is coming up · CapyBudget', billTitle: 'A little heads-up for your bill',
+    billIntro: 'Here’s what’s coming up, so you can leave a little room for it.',
+    billLabel: 'Bill', amountLabel: 'Amount', dueLabel: 'Due date', billAction: 'Review your bills',
+    assistantAlertSubject: 'A cashflow update · CapyBudget',
+    assistantAlertOpen: 'Open CapyBudget to review the details and decide what works for you.',
+    assistantAction: 'Review cashflow',
+    assistantNote: 'Capy’s suggestions are not professional financial advice. Capy never moves money without your approval.',
   },
   id: {
     verificationSubject: 'Kode verifikasi CapyBudget',
-    verificationTitle: 'Verifikasi email Anda',
-    verificationText: 'Masukkan kode ini di CapyBudget untuk memverifikasi alamat email Anda:',
+    verificationTitle: 'Satu langkah lagi, lalu siap',
+    verificationText: 'Masukkan kode ini di CapyBudget untuk memverifikasi alamat email Anda.',
+    codeLabel: 'Kode verifikasi Anda',
     resetSubject: 'Atur ulang kata sandi CapyBudget',
-    resetTitle: 'Atur ulang kata sandi',
-    resetText: 'Gunakan tautan berikut untuk membuat kata sandi baru:',
-    expires: 'Kode ini berlaku selama 10 menit.',
+    resetTitle: 'Mari masuk kembali',
+    resetText: 'Buat kata sandi baru untuk kembali mengelola uang dengan tenang.',
+    resetAction: 'Atur ulang kata sandi',
+    expires: 'Kode ini berlaku selama 10 menit. Jangan bagikan kepada siapa pun.',
     resetExpires: 'Tautan ini berlaku selama 30 menit.',
-    ignore: 'Jika Anda tidak meminta ini, abaikan email ini.',
-    billSubject: 'Tagihan akan jatuh tempo · CapyBudget', billTitle: 'Tagihan akan jatuh tempo', billText: 'jatuh tempo pada',
-    invoiceSubject: 'Faktur dari CapyBudget', invoiceText: 'Terlampir faktur Anda.', invoiceTextShort: 'Faktur',
-    billIntro: 'Pengingat untuk tagihan Anda yang akan datang:'
-    ,invoiceReminderSubject: 'Pengingat pembayaran faktur Anda', assistantAlertSubject: 'Pembaruan arus kas · CapyBudget', assistantAlertOpen: 'Buka CapyBudget untuk meninjau pembaruan arus kas Anda.'
-  }
+    ignore: 'Jika Anda tidak meminta ini, Anda dapat mengabaikan email ini.',
+    fallback: 'Tombol tidak berfungsi? Salin tautan ini ke browser Anda:',
+    security: 'KEAMANAN AKUN', business: 'BISNIS', personal: 'KEUANGAN ANDA', assistant: 'CATATAN DARI CAPY',
+    invoiceSubject: 'Faktur dari CapyBudget',
+    invoiceTitle: 'Faktur Anda sudah siap',
+    invoiceText: 'Faktur Anda terlampir sebagai PDF. Unduh untuk meninjau detailnya atau simpan sebagai arsip.',
+    invoiceLabel: 'Nomor faktur',
+    invoiceReminderSubject: 'Pengingat pembayaran faktur Anda',
+    invoiceReminderTitle: 'Pengingat pembayaran',
+    billSubject: 'Tagihan akan jatuh tempo · CapyBudget', billTitle: 'Pengingat kecil untuk tagihan Anda',
+    billIntro: 'Ini tagihan yang akan datang, agar Anda bisa menyiapkan ruang untuknya.',
+    billLabel: 'Tagihan', amountLabel: 'Jumlah', dueLabel: 'Tanggal jatuh tempo', billAction: 'Lihat tagihan Anda',
+    assistantAlertSubject: 'Pembaruan arus kas · CapyBudget',
+    assistantAlertOpen: 'Buka CapyBudget untuk meninjau detailnya dan menentukan langkah yang cocok untuk Anda.',
+    assistantAction: 'Tinjau arus kas',
+    assistantNote: 'Saran Capy bukan nasihat keuangan profesional. Capy tidak pernah memindahkan uang tanpa persetujuan Anda.',
+  },
 } as const;
-
-function escapeHtml(value: string): string {
-  const escaped: Record<string, string> = {
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  };
-  return value.replace(/[&<>"']/g, (character) => escaped[character]!);
-}
 
 export function renderEmail(message: EmailMessage) {
   const words = copy[message.locale];
+  const base = { locale: message.locale };
 
-  if(message.kind==='assistant-alert'){
-    const title=escapeHtml(message.title),body=escapeHtml(message.message),open=escapeHtml(words.assistantAlertOpen);
-    return {subject:words.assistantAlertSubject,text:`${message.title}\n\n${message.message}\n\n${words.assistantAlertOpen}`,html:`<main><h1>${title}</h1><p>${body}</p><p>${open}</p></main>`};
+  switch (message.kind) {
+    case 'verification':
+      return {
+        subject: words.verificationSubject,
+        text: [words.verificationTitle, '', words.verificationText, '', message.otp, '', words.expires, words.ignore].join('\n'),
+        html: emailLayout({ ...base, title: words.verificationTitle, category: words.security,
+          preheader: words.verificationText,
+          content: paragraph(words.verificationText) + codeCard(message.otp, words.codeLabel) + paragraph(words.expires, true) + paragraph(words.ignore, true) }),
+      };
+    case 'password-reset':
+      return {
+        subject: words.resetSubject,
+        text: [words.resetTitle, '', words.resetText, '', message.url, '', words.resetExpires, words.ignore].join('\n'),
+        html: emailLayout({ ...base, title: words.resetTitle, category: words.security,
+          preheader: words.resetText,
+          content: paragraph(words.resetText) + paragraph(words.resetExpires, true) + paragraph(words.ignore, true),
+          action: { label: words.resetAction, url: message.url }, fallbackLabel: words.fallback }),
+      };
+    case 'bill-reminder': {
+      const url = appLink('/bills');
+      const amount = `${message.currency} ${message.amount}`;
+      return {
+        subject: words.billSubject,
+        text: [words.billTitle, '', words.billIntro, '', `${words.billLabel}: ${message.billName}`, `${words.amountLabel}: ${amount}`, `${words.dueLabel}: ${formatDate(message.dueDate)}`, '', words.billAction, url].join('\n'),
+        html: emailLayout({ ...base, title: words.billTitle, category: words.personal,
+          preheader: words.billIntro,
+          content: paragraph(words.billIntro) + detailCard([{ label: words.billLabel, value: message.billName }, { label: words.amountLabel, value: amount }, { label: words.dueLabel, value: formatDate(message.dueDate) }]),
+          action: { label: words.billAction, url } }),
+      };
+    }
+    case 'invoice-delivery':
+      return {
+        subject: `${words.invoiceSubject} · ${message.invoiceNumber}`,
+        text: [words.invoiceTitle, '', words.invoiceText, '', `${words.invoiceLabel}: ${message.invoiceNumber}`].join('\n'),
+        html: emailLayout({ ...base, title: words.invoiceTitle, category: words.business,
+          preheader: words.invoiceText,
+          content: paragraph(words.invoiceText) + detailCard([{ label: words.invoiceLabel, value: message.invoiceNumber }]) }),
+      };
+    case 'invoice-reminder':
+      return {
+        subject: `${words.invoiceReminderSubject} · ${message.invoiceNumber}`,
+        text: [words.invoiceReminderTitle, '', formatDatesInText(message.reminderMessage), '', `${words.invoiceLabel}: ${message.invoiceNumber}`].join('\n'),
+        html: emailLayout({ ...base, title: words.invoiceReminderTitle, category: words.business,
+          preheader: words.invoiceReminderTitle,
+          content: paragraph(formatDatesInText(message.reminderMessage)) + detailCard([{ label: words.invoiceLabel, value: message.invoiceNumber }]) }),
+      };
+    case 'assistant-alert': {
+      const url = appLink('/assistant');
+      return {
+        subject: words.assistantAlertSubject,
+        text: [message.title, '', formatDatesInText(message.message), '', words.assistantAlertOpen, url, '', words.assistantNote].join('\n'),
+        html: emailLayout({ ...base, title: message.title, category: words.assistant,
+          preheader: words.assistantAlertOpen,
+          content: paragraph(formatDatesInText(message.message)) + paragraph(words.assistantAlertOpen) + paragraph(words.assistantNote, true),
+          action: { label: words.assistantAction, url } }),
+      };
+    }
   }
-
-  if (message.kind === 'invoice-delivery') {
-    const number=escapeHtml(message.invoiceNumber),title=escapeHtml(words.invoiceSubject),intro=escapeHtml(words.invoiceText);
-    return {subject:words.invoiceSubject+' · '+message.invoiceNumber,text:title+'\n\n'+intro+'\n'+words.invoiceTextShort+' '+message.invoiceNumber,
-      html:'<main><h1>'+title+'</h1><p>'+intro+'</p><p><strong>'+words.invoiceTextShort+' '+number+'</strong></p></main>'};
-  }
-  if(message.kind==='invoice-reminder'){
-    const number=escapeHtml(message.invoiceNumber),body=escapeHtml(message.reminderMessage),title=escapeHtml(words.invoiceReminderSubject);
-    return {subject:`${words.invoiceReminderSubject} · ${message.invoiceNumber}`,text:`${title}\n\n${body}\n${words.invoiceTextShort} ${message.invoiceNumber}`,html:`<main><h1>${title}</h1><p>${body}</p><p><strong>${words.invoiceTextShort} ${number}</strong></p></main>`};
-  }
-  if (message.kind === 'bill-reminder') {
-    const name = escapeHtml(message.billName), amount = escapeHtml(`${message.currency} ${message.amount}`), due = escapeHtml(message.dueDate);
-    return { subject: words.billSubject, text: `${words.billTitle}\n\n${words.billIntro}\n${message.billName} · ${message.currency} ${message.amount} · ${words.billText} ${message.dueDate}.`,
-      html: `<main><h1>${words.billTitle}</h1><p>${words.billIntro}</p><p><strong>${name}</strong><br>${amount}<br>${words.billText} ${due}</p></main>` };
-  }
-
-  if (message.kind === 'verification') {
-    const otp = escapeHtml(message.otp);
-    return {
-      subject: words.verificationSubject,
-      text: [words.verificationTitle, '', words.verificationText, '', message.otp, '', words.expires, words.ignore].join('\n'),
-      html: '<main><h1>' + words.verificationTitle + '</h1><p>' + words.verificationText +
-        '</p><p style="font-size:32px;font-weight:700;letter-spacing:8px">' + otp +
-        '</p><p>' + words.expires + '</p><p>' + words.ignore + '</p></main>'
-    };
-  }
-
-  const url = escapeHtml(message.url);
-  return {
-    subject: words.resetSubject,
-    text: [words.resetTitle, '', words.resetText, '', message.url, '', words.resetExpires, words.ignore].join('\n'),
-    html: '<main><h1>' + words.resetTitle + '</h1><p>' + words.resetText +
-      '</p><p><a href="' + url + '">' + words.resetText + '</a></p><p>' +
-      words.resetExpires + '</p><p>' + words.ignore + '</p></main>'
-  };
 }

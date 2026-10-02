@@ -1,0 +1,17 @@
+name: capybudget-ci
+services:
+  jenkins:
+    container_name: jenkins
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    ports: ["127.0.0.1:8080:8080"]
+    volumes: [jenkins_home:/var/jenkins_home]
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: -Xms256m -Xmx1024m
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+volumes:
+  jenkins_home:

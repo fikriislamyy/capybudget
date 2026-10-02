@@ -18,7 +18,8 @@ const messages = {
     lastUsed: 'Last used', chooseCategory: 'Pick a category to finish.',
     appearance: 'Appearance', appearanceIntro: 'Theme and language apply on every device.',
     theme: 'Theme', themeLight: 'Light', themeDark: 'Dark', themeSystem: 'Match my device',
-    offlineQueued: 'You are offline. Changes cannot be saved.'
+    offlineQueued: 'You are offline. Changes cannot be saved.',
+    retry: 'Try again', errorTitle: 'Something went wrong', loading: 'Loading…', cancel: 'Cancel', typeLabel: 'Type'
   },
   id: {
     onboardingTitle: 'Selamat datang di CapyBudget', onboardingIntro: 'Empat langkah cepat dan kolam uang Anda siap.',
@@ -37,7 +38,8 @@ const messages = {
     lastUsed: 'Terakhir dipakai', chooseCategory: 'Pilih kategori untuk selesai.',
     appearance: 'Tampilan', appearanceIntro: 'Tema dan bahasa berlaku di semua perangkat.',
     theme: 'Tema', themeLight: 'Terang', themeDark: 'Gelap', themeSystem: 'Ikuti perangkat',
-    offlineQueued: 'Anda sedang luring. Perubahan tidak dapat disimpan.'
+    offlineQueued: 'Anda sedang luring. Perubahan tidak dapat disimpan.',
+    retry: 'Coba lagi', errorTitle: 'Terjadi kesalahan', loading: 'Memuat…', cancel: 'Batal', typeLabel: 'Jenis'
   }
 } as const;
 

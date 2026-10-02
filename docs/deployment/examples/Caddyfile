@@ -1,0 +1,15 @@
+capybudget.bebem.my.id {
+    encode zstd gzip
+    @api path /api /api/*
+    handle @api {
+        reverse_proxy api:3000
+    }
+    handle {
+        reverse_proxy web:3000
+    }
+}
+
+api.capybudget.bebem.my.id {
+    encode zstd gzip
+    reverse_proxy api:3000
+}

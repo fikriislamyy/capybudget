@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "apps/web/src/routes/(app)/+layout.svelte"
+        ],
+        "createdAt": "2026-10-02T05:52:23.345Z",
+        "reason": "Agent review: the 3px primary border is scoped to .notice-list article.unread and identifies unread notification state; it is not a decorative card accent. Preserve the existing functional indicator."
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "var(--ease-spring)",
+        "files": [
+          "apps/web/src/routes/(app)/onboarding/+page.svelte"
+        ],
+        "createdAt": "2026-10-02T06:00:48.519Z",
+        "reason": "User-specified CapyBudget design system requires --ease-spring cubic-bezier(0.34, 1.56, 0.64, 1) for gentle app motion. These short onboarding transitions reuse that shared token and disable motion under prefers-reduced-motion."
+      }
+    ]
+  }
+}

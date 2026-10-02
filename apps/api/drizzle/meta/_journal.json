@@ -169,6 +169,27 @@
       "when": 1790970000007,
       "tag": "0023_erasure_fences",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790970000008,
+      "tag": "0024_ux_mvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790970000009,
+      "tag": "0025_bill_forecast_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790970000010,
+      "tag": "0026_bill_group_forecast",
+      "breakpoints": true
     }
   ]
 }

@@ -133,7 +133,8 @@ async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, inp
   if(!uuidRe.test(input.accountId)) reject('Choose an account.');
   const amount=decimal(input.amount), date=isoDate(input.date);
   if((input.notes?.length??0)>2000 || (input.merchant?.length??0)>200) reject('Notes or merchant name is too long.');
-  if(!input.notes?.trim()&&!input.merchant?.trim()) reject('Add a note or merchant name.');
+  // Notes and merchant are optional: quick-add requires amount, account and category.
+
   const [account]=await q(tx,'select id,ledger_account_id,currency from accounts where workspace_id=$1 and id=$2 and archived_at is null and deleted_at is null',[ws,input.accountId]);
   if(!account) reject('Choose an active account in this workspace.');
   let category:any=null, destination:any=null;
@@ -570,7 +571,8 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    if(!uuidRe.test(params.attachmentId))reject('Attachment ID is invalid.');
    const [attachment]=await q(tx,'select a.object_key,a.original_name,a.mime_type from attachments a join transactions t on t.workspace_id=a.workspace_id and t.id=a.transaction_id where a.workspace_id=$1 and a.id=$2 and a.status=\'ready\' and a.deleted_at is null and t.deleted_at is null',[params.workspaceId,params.attachmentId]);
    if(!attachment)return fail(404,'ATTACHMENT_NOT_FOUND','Attachment not found.');
-   try{const object=await getAttachment(attachment.object_key);if(!object.Body)return fail(404,'ATTACHMENT_NOT_FOUND','Attachment file is missing.');const bytes=await object.Body.transformToByteArray();const body=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;return new Response(body,{headers:{'Content-Type':attachment.mime_type,'Content-Length':String(bytes.byteLength),'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(attachment.original_name)}`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}catch{console.error('Private attachment fetch failed');return fail(502,'ATTACHMENT_UNAVAILABLE','Attachment is temporarily unavailable.');}
+   const disposition=new URL(request.url).searchParams.get('inline')==='1'&&['image/jpeg','image/png','image/webp','application/pdf'].includes(attachment.mime_type)?'inline':'attachment';
+   try{const object=await getAttachment(attachment.object_key);if(!object.Body)return fail(404,'ATTACHMENT_NOT_FOUND','Attachment file is missing.');const bytes=await object.Body.transformToByteArray();const body=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;return new Response(body,{headers:{'Content-Type':attachment.mime_type,'Content-Length':String(bytes.byteLength),'Content-Disposition':`${disposition}; filename*=UTF-8''${encodeURIComponent(attachment.original_name)}`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}catch{console.error('Private attachment fetch failed');return fail(502,'ATTACHMENT_UNAVAILABLE','Attachment is temporarily unavailable.');}
  }))
  .delete('/api/workspaces/:workspaceId/attachments/:attachmentId',async({request,params})=>withWorkspace(request,params.workspaceId,async(tx,actor)=>{
    const [attachment]=await q(tx,'update attachments set deleted_at=now() where workspace_id=$1 and id=$2 and deleted_at is null returning id,object_key,original_name as "originalName"',[params.workspaceId,params.attachmentId]);

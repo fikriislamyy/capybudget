@@ -53,10 +53,10 @@ export async function sweepBillReminders(now = new Date(), pushSender?: PushSend
           await tx.unsafe("update finance_notification_deliveries set status='expired',lease_expires_at=null,updated_at=now() where workspace_id=$1 and status in ('pending','retryable') and expires_at<=now()",[workspace.id]);
           const today = workspaceToday(workspace.timezone, now), remindersReleased=workspaceHour(workspace.timezone,now)>=9, end = new Date(`${today}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 90);
           const through = end.toISOString().slice(0,10);
-          const bills = await tx.unsafe('select * from bills where workspace_id=$1 and enabled and archived_at is null and next_due_date<=$2 order by next_due_date limit 1000', [workspace.id, through]);
+          const bills = await tx.unsafe('select * from bills where workspace_id=$1 and enabled and archived_at is null and next_due_date<=$2 and (end_date is null or next_due_date<=end_date) order by next_due_date limit 1000', [workspace.id, through]);
           for (const bill of bills) {
             let due = bill.next_due_date as string, count = 0;
-            while (due <= through && count++ < 100) {
+            while (due <= through && (!bill.end_date || due <= bill.end_date) && count++ < 100) {
               await tx.unsafe('insert into bill_occurrences(workspace_id,bill_id,due_on,name,amount,currency) values($1,$2,$3,$4,$5,$6) on conflict do nothing', [workspace.id,bill.id,due,bill.name,bill.amount,bill.currency]);
               if (bill.frequency === 'once') break;
               const occurrenceCount = Number((await tx.unsafe('select count(*)::int as n from bill_occurrences where workspace_id=$1 and bill_id=$2 and due_on >= $3', [workspace.id,bill.id,bill.anchor_date]))[0]!.n);

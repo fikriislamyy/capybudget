@@ -11,7 +11,15 @@ export default defineConfig({
     workbox: {
       importScripts: ['/push-worker.js'],
       navigateFallback: undefined,
-      runtimeCaching: [{urlPattern: /\/api\//,handler: 'NetworkOnly'}],
+      cleanupOutdatedCaches: true,
+      clientsClaim: true,
+      skipWaiting: true,
+      // Authenticated HTML/data must come from the current server build, never
+      // an old cached page whose route components can differ after an update.
+      runtimeCaching: [
+        {urlPattern: ({ request, url }) => request.mode === 'navigate' || url.pathname.endsWith('/__data.json'), handler: 'NetworkOnly'},
+        {urlPattern: /\/api\//,handler: 'NetworkOnly'},
+      ],
       navigateFallbackDenylist: [
         /^\/api\//,
         /^\/dashboard(?:\/|$)/,
@@ -23,8 +31,8 @@ export default defineConfig({
       name: 'CapyBudget',
       short_name: 'CapyBudget',
       description: 'A clear view of your money.',
-      theme_color: '#397958',
-      background_color: '#f5f7f4',
+      theme_color: '#8A5F3A',
+      background_color: '#FFF8EC',
       display: 'standalone',
       start_url: '/'
     }

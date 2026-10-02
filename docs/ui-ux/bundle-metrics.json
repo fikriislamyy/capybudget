@@ -1,0 +1,59 @@
+{
+  "referenceCommit": "1af1429",
+  "before": {
+    "totalJsBytes": 1851555,
+    "largestChunks": [
+      {
+        "file": "_app/immutable/chunks/Xg1mdym8.js",
+        "bytes": 263113
+      },
+      {
+        "file": "_app/immutable/chunks/B7ucwSip.js",
+        "bytes": 257695
+      },
+      {
+        "file": "_app/immutable/chunks/BLgz5mG6.js",
+        "bytes": 245129
+      },
+      {
+        "file": "_app/immutable/chunks/Dpm95h10.js",
+        "bytes": 149018
+      },
+      {
+        "file": "_app/immutable/chunks/5X3HT17b.js",
+        "bytes": 145840
+      }
+    ]
+  },
+  "after": {
+    "totalJsBytes": 1471713,
+    "largestChunks": [
+      {
+        "file": "_app/immutable/chunks/Dr34kUxc.js",
+        "bytes": 552199,
+        "gzipBytes": 184658
+      },
+      {
+        "file": "_app/immutable/nodes/23.DxnizZgG.js",
+        "bytes": 103962,
+        "gzipBytes": 28277
+      },
+      {
+        "file": "_app/immutable/chunks/DLu0bfak.js",
+        "bytes": 65996,
+        "gzipBytes": 22551
+      },
+      {
+        "file": "_app/immutable/chunks/BzjHURMX.js",
+        "bytes": 56610,
+        "gzipBytes": 21153
+      },
+      {
+        "file": "_app/immutable/nodes/7.hNiTRYjw.js",
+        "bytes": 44374,
+        "gzipBytes": 11342
+      }
+    ]
+  },
+  "note": "Sum of emitted client JavaScript including lazy routes and service worker; not initial-route payload."
+}

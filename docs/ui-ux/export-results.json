@@ -1,0 +1,25 @@
+{
+  "browser": "Chromium",
+  "viewport": 390,
+  "source": "Isolated synthetic test workspace; UI export buttons and successful downloads",
+  "results": [
+    {
+      "format": "CSV",
+      "filename": "capybudget-analytics-2026-10-01-2026-10-02.csv",
+      "bytes": 3765,
+      "status": "passed"
+    },
+    {
+      "format": "Excel",
+      "filename": "capybudget-analytics-2026-10-01-2026-10-02.xlsx",
+      "bytes": 12412,
+      "status": "passed"
+    },
+    {
+      "format": "PDF",
+      "filename": "capybudget-analytics-2026-10-01-2026-10-02.pdf",
+      "bytes": 35435,
+      "status": "passed"
+    }
+  ]
+}

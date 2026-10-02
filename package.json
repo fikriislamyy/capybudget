@@ -33,7 +33,8 @@
     "dev:privacy-worker": "bun --env-file=.env --hot apps/api/src/privacy/worker.ts",
     "security:migrate-fields": "bun --env-file=.env apps/api/src/security/migrate-fields.ts",
     "backup:create": "bun --env-file=.env infra/backup/backup.ts create",
-    "test:security": "bun --env-file=.env test apps/api/tests/security"
+    "test:security": "bun --env-file=.env test apps/api/tests/security",
+    "db:fresh": "bun run --cwd apps/api db:fresh"
   },
   "engines": {
     "bun": ">=1.2.0"

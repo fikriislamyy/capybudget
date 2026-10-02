@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-01",
+  "referenceCommit": "1af1429",
+  "implementation": "complete",
+  "externalAcceptance": "pending; see checklist.md",
+  "staticChecks": {
+    "web": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "api": "passed",
+    "productionBuild": "passed",
+    "diffWhitespace": "passed"
+  },
+  "unitChecks": {
+    "passed": 29,
+    "skipped": 1,
+    "assertions": 73
+  },
+  "isolatedFinanceIntegration": {
+    "passed": 1,
+    "assertions": 473
+  },
+  "browserChecks": {
+    "chromium": {
+      "passed": 15,
+      "skipped": 0
+    },
+    "firefox": {
+      "passed": 12,
+      "skipped": 1
+    },
+    "webkit": {
+      "passed": 12,
+      "skipped": 1
+    }
+  },
+  "browserSkipReason": "Production CPU/network performance profiling uses Chromium CDP.",
+  "exports": "CSV, XLSX and PDF UI downloads passed; export-results.json",
+  "performance": "production-metrics.json",
+  "bundle": "bundle-metrics.json",
+  "screenshots": "screenshots/",
+  "externalChecks": [
+    "Physical Android/iOS software keyboards and installed PWA safe areas",
+    "VoiceOver or NVDA manual review",
+    "Previous supported browser versions and Edge application",
+    "Representative-user tasks",
+    "Production field Core Web Vitals"
+  ]
+}

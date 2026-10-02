@@ -39,6 +39,10 @@ export function normalizeEmailForLimit(email: string): string | undefined {
 }
 
 export function buildRateLimitBuckets(path: string, email: string | undefined, ip: string): Bucket[] {
+  // Session reads are not credential attempts. SSR callers share one server IP.
+  if (path === '/get-session') {
+    return [{ key: 'ip:session-read:' + digest('ip', ip), limit: 1000, seconds: 60 }];
+  }
   const buckets: Bucket[] = [
     { key: 'ip:all:' + digest('ip', ip), limit: 100, seconds: 60 }
   ];

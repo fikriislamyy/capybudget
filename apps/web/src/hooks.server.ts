@@ -1,4 +1,4 @@
-import type { Handle } from '@sveltejs/kit';
+import { error, type Handle } from '@sveltejs/kit';
 
 const apiOrigin = process.env.API_INTERNAL_URL ?? 'http://localhost:3000';
 
@@ -33,10 +33,8 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   if (event.locals.sessionState === 'unavailable' && (isPrivate || isEntry)) {
-    return new Response('Authentication service is temporarily unavailable.', {
-      status: 503,
-      headers: { 'Cache-Control': 'no-store', 'Retry-After': '5' }
-    });
+    event.setHeaders({ 'Cache-Control': 'no-store', 'Retry-After': '5' });
+    error(503, 'Authentication service is temporarily unavailable.');
   }
   if (isPrivate && !event.locals.user) {
     return Response.redirect(new URL('/login', event.url), 303);
@@ -51,11 +49,15 @@ export const handle: Handle = async ({ event, resolve }) => {
   if ((isPrivate || path === '/unlock') && event.locals.user) {
     try {
       const status = await fetch(`${apiOrigin}/api/security/status`, {headers:cookie?{cookie}:{},cache:'no-store',signal:AbortSignal.timeout(4000)});
-      if (!status.ok) return Response.redirect(new URL('/login',event.url),303);
+      if (status.status===401 || status.status===403) return Response.redirect(new URL('/login',event.url),303);
+      if (!status.ok) throw new Error('Security service unavailable');
       const security = await status.json();
       if (security.locked && path !== '/unlock') return Response.redirect(new URL('/unlock',event.url),303);
       if (!security.locked && path === '/unlock') return Response.redirect(new URL('/dashboard',event.url),303);
-    } catch { return new Response('Security service is temporarily unavailable.',{status:503,headers:{'Cache-Control':'no-store'}}); }
+    } catch {
+      event.setHeaders({ 'Cache-Control': 'no-store', 'Retry-After': '5' });
+      error(503, 'Security service is temporarily unavailable.');
+    }
   }
   const response = await resolve(event);
   if (isPrivate || path.startsWith('/api/') || ['/unlock','/two-factor','/reset-password','/deletion-receipt'].includes(path)) {

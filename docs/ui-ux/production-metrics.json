@@ -1,0 +1,54 @@
+{
+  "profile": "Chromium headless, production, CPU 4x slowdown, 1.6 Mbps down / 750 Kbps up, 40ms latency, warm cache, 390×844",
+  "dataset": "Synthetic personal and business workspaces with wallets, budgets, goals, bills and a business invoice; ten measured quick-add entries",
+  "optionReads": 2,
+  "baselineDashboardMs": [
+    796,
+    728,
+    751,
+    751,
+    746
+  ],
+  "dashboardMs": [
+    914,
+    883,
+    857,
+    891,
+    944
+  ],
+  "quickAddVisibleMs": [
+    251,
+    149,
+    208,
+    168,
+    144,
+    140,
+    164,
+    155,
+    148,
+    153
+  ],
+  "automatedEntryMs": [
+    850,
+    780,
+    736,
+    697,
+    695,
+    654,
+    755,
+    693,
+    774,
+    766
+  ],
+  "median": {
+    "dashboard": 891,
+    "quickAddVisible": 154,
+    "automatedEntry": 745.5
+  },
+  "labVitals": {
+    "cls": 0,
+    "lcp": 428,
+    "longTasks": 1
+  },
+  "fieldVitals": "Unmeasured; lab results do not establish field INP or a human entry-time median"
+}

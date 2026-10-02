@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun --env-file=../../.env --hot src/dev.ts",
     "worker": "bun --env-file=../../.env --hot src/email/worker.ts",
+    "email:preview": "bun scripts/preview-emails.ts",
     "worker:tracking": "bun --env-file=../../.env --hot src/tracking/worker.ts",
     "worker:assistant": "bun --env-file=../../.env --hot src/assistant/worker.ts",
     "test": "bun test tests/auth",
@@ -24,7 +25,8 @@
     "db:generate": "bun --env-file=../../.env run drizzle-kit generate",
     "db:migrate": "bun --env-file=../../.env run drizzle-kit migrate",
     "db:studio": "bun --env-file=../../.env run drizzle-kit studio",
-    "db:cleanup-auth": "bun --env-file=../../.env src/db/cleanup-expired-auth.ts"
+    "db:cleanup-auth": "bun --env-file=../../.env src/db/cleanup-expired-auth.ts",
+    "db:fresh": "bun --env-file=../../.env scripts/db-fresh.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "latest",

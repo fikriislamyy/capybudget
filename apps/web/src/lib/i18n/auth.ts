@@ -15,6 +15,7 @@ export const messages = {
     genericError: 'We couldn’t complete that request. Please try again.', sent: 'If an account matches that email, instructions are on the way.',
     rateLimited: 'Too many attempts. Try again in {seconds}s.',
     verificationSent: 'A verification code has been sent.', resendWait: 'Resend in {seconds}s', verified: 'Email verified. You can now sign in.',
+    passwordRequirements: 'Use at least 12 characters, including an uppercase letter, a lowercase letter, a number, and a symbol.',
     passwordMismatch: 'Passwords do not match.', passwordLength: 'Use at least 12 characters.',
     unverified: 'Please verify your email before signing in.', backLogin: 'Back to sign in'
   },
@@ -32,6 +33,7 @@ export const messages = {
     genericError: 'Permintaan belum berhasil. Silakan coba lagi.', sent: 'Jika email terdaftar, petunjuk akan segera dikirim.',
     rateLimited: 'Terlalu banyak percobaan. Coba lagi dalam {seconds} dtk.',
     verificationSent: 'Kode verifikasi telah dikirim.', resendWait: 'Kirim ulang dalam {seconds} dtk', verified: 'Email terverifikasi. Anda dapat masuk.',
+    passwordRequirements: 'Gunakan minimal 12 karakter, termasuk huruf besar, huruf kecil, angka, dan simbol.',
     passwordMismatch: 'Kata sandi tidak sama.', passwordLength: 'Gunakan setidaknya 12 karakter.',
     unverified: 'Verifikasi email sebelum masuk.', backLogin: 'Kembali ke masuk'
   }
@@ -42,5 +44,6 @@ export function getLocale(value?: string | null): Locale {
 }
 
 export const AUTH_UI_CONTEXT = 'capybudget-auth-ui';
-export type ThemeChoice = 'light' | 'dark' | 'system';
+export type { ThemeChoice } from '$lib/theme';
+import type { ThemeChoice } from '$lib/theme';
 export type AuthUiState = { locale: Locale; dark: boolean; theme: ThemeChoice };

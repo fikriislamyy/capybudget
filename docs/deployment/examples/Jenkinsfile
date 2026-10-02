@@ -1,0 +1,38 @@
+pipeline {
+  agent any
+  options { disableConcurrentBuilds(); timestamps(); skipDefaultCheckout(true) }
+  parameters {
+    booleanParam(name: 'FIRST_DEPLOY', defaultValue: false, description: 'Only for a new empty production database')
+  }
+  environment {
+    DEPLOY_HOST = 'REPLACE_WITH_VPS_IPV4'
+    DEPLOY_USER = 'deploy'
+  }
+  stages {
+    stage('Checkout trusted main') {
+      steps {
+        checkout scm
+        script {
+          env.RELEASE_ID = sh(script: 'git rev-parse HEAD', returnStdout: true).trim() + '-' + env.BUILD_NUMBER
+          env.DEPLOY_MODE = params.FIRST_DEPLOY ? 'first' : 'update'
+        }
+      }
+    }
+    stage('Upload and deploy') {
+      steps {
+        sshagent(credentials: ['capybudget-vps-ssh']) {
+          withCredentials([file(credentialsId: 'capybudget-known-hosts', variable: 'KNOWN_HOSTS')]) {
+            sh '''#!/usr/bin/env bash
+set -euo pipefail
+ssh_args=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS")
+target="$DEPLOY_USER@$DEPLOY_HOST"
+ssh "${ssh_args[@]}" "$target" "mkdir -p /opt/capybudget/releases/$RELEASE_ID"
+git archive HEAD | ssh "${ssh_args[@]}" "$target" "tar -x -C /opt/capybudget/releases/$RELEASE_ID"
+ssh "${ssh_args[@]}" "$target" "bash /opt/capybudget/releases/$RELEASE_ID/docs/deployment/examples/deploy.sh $RELEASE_ID $DEPLOY_MODE"
+'''
+          }
+        }
+      }
+    }
+  }
+}

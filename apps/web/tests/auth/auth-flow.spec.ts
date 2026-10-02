@@ -1,4 +1,11 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function preference(page:Page, name:string|RegExp) {
+  const mobile=(page.viewportSize()?.width??1280)<1024;
+  if(mobile)await page.getByRole('button',{name:'More',exact:true}).or(page.getByRole('button',{name:'Menu lainnya',exact:true})).click();
+  await page.getByRole('button',{name,exact:typeof name==='string'}).click();
+  if(mobile)await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
+}
 
 const databaseUrl=process.env.DATABASE_URL??'postgres://capybudget:capybudget@localhost:5432/capybudget';
 if(!new URL(databaseUrl).pathname.endsWith('_test'))throw new Error('Browser integration requires DATABASE_URL pointing to a disposable database ending in _test.');
@@ -46,6 +53,12 @@ test('signup, OTP verification, login, password reset, and logout', async ({ pag
     await page.getByLabel('Email address').fill(email);
     await page.getByLabel('Password',{exact:true}).fill(initialPassword);
     await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL('**/onboarding');
+    await page.getByRole('button',{name:'Continue',exact:true}).click();
+    await page.getByRole('button',{name:'Continue',exact:true}).click();
+    await page.locator('#ob-account').fill('First wallet');
+    await page.getByRole('button',{name:'Continue',exact:true}).click();
+    await page.getByRole('button',{name:'Take me to my dashboard',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Your money, at a glance'})).toBeVisible();
 
     const assistantSetup=await page.evaluate(async()=>{
@@ -79,12 +92,12 @@ test('signup, OTP verification, login, password reset, and logout', async ({ pag
     let assistantNavigations=0;
     page.on('framenavigated',(frame)=>{if(frame===page.mainFrame())assistantNavigations++;});
     const navigationBaseline=assistantNavigations;
-    await page.getByRole('button',{name:'Bahasa Indonesia'}).click();
+    await preference(page,'Bahasa Indonesia');
     await expect(page.getByRole('heading',{name:'Asisten AI'})).toBeVisible();
     expect(assistantNavigations).toBe(navigationBaseline);
-    await page.getByRole('button',{name:'Toggle dark mode'}).click();
+    await preference(page,/^(Theme:|Tema:)/);
     await expect(page.locator('html')).toHaveClass(/dark/);
-    await page.getByRole('button',{name:'English'}).click();
+    await preference(page,'English');
     await expect(page.getByRole('heading',{name:'AI Assistant'})).toBeVisible();
 
     const notificationSource=await page.evaluate(async({workspaceId,accountId,categoryId})=>{
@@ -123,32 +136,34 @@ test('signup, OTP verification, login, password reset, and logout', async ({ pag
     });
     await page.goto('/notifications');
     await expect.poll(()=>pendingInboxStarted).toBe(true);
-    await page.locator('#workspace').selectOption(assistantSetup.secondWorkspaceId);
+    await page.locator('#workspace-switcher').selectOption(assistantSetup.secondWorkspaceId);
     await expect(page.getByText('No notifications here yet.')).toBeVisible();
     releasePendingInbox();
     await heldInboxComplete;
     await page.unroute(`**/api/workspaces/${assistantSetup.workspaceId}/notifications?**`);
     await expect(page.getByText('budget at 80%')).toHaveCount(0);
-    await page.locator('#workspace').selectOption(assistantSetup.workspaceId);
+    await page.locator('#workspace-switcher').selectOption(assistantSetup.workspaceId);
     budgetNotice=page.getByRole('article').filter({hasText:'budget at 80%'});
     await expect(budgetNotice).toHaveCount(1);
     await expect(budgetNotice).toHaveAccessibleName(/budget at 80%/);
     await expect(page.getByRole('navigation',{name:'Filters'})).toBeVisible();
     await page.evaluate(()=>{(window as any).__themeTransitions=0;const original=document.startViewTransition?.bind(document);if(original)document.startViewTransition=((update:any)=>{(window as any).__themeTransitions++;return original(update);}) as typeof document.startViewTransition;});
     const initialDark=await page.locator('html').evaluate(el=>el.classList.contains('dark'));
-    await page.getByRole('button',{name:'Toggle dark mode'}).focus();await page.keyboard.press('Enter');
-    await expect.poll(()=>page.locator('html').evaluate(el=>el.classList.contains('dark'))).toBe(!initialDark);
-    expect(await page.evaluate(()=>(window as any).__themeTransitions)).toBe(0);
-    await page.getByRole('button',{name:'Toggle dark mode'}).focus();await page.keyboard.press('Enter');await expect.poll(()=>page.locator('html').evaluate(el=>el.classList.contains('dark'))).toBe(initialDark);
+    for(let i=0;i<3;i++){
+      await preference(page,/^(Theme:|Tema:)/);
+      const expectedDark=await page.evaluate(()=>{const choice=localStorage.getItem('capybudget-theme');return choice==='dark'||choice==='system'&&matchMedia('(prefers-color-scheme: dark)').matches;});
+      await expect.poll(()=>page.locator('html').evaluate(el=>el.classList.contains('dark'))).toBe(expectedDark);
+    }
+    await expect.poll(()=>page.locator('html').evaluate(el=>el.classList.contains('dark'))).toBe(initialDark);
     expect(await page.evaluate(()=>(window as any).__themeTransitions)).toBe(0);
     let notificationNavigations=0;
     page.on('framenavigated',frame=>{if(frame===page.mainFrame())notificationNavigations++;});
     const notificationNavigationBaseline=notificationNavigations;
-    await page.getByRole('button',{name:'Bahasa Indonesia'}).click();
+    await preference(page,'Bahasa Indonesia');
     await expect(page.getByRole('heading',{name:'Pemberitahuan'})).toBeVisible();
     await expect(page.getByRole('article').filter({hasText:'terpakai 80%'}).getByRole('link',{name:'Buka sumber'})).toBeVisible();
     expect(notificationNavigations).toBe(notificationNavigationBaseline);
-    await page.getByRole('button',{name:'English'}).click();
+    await preference(page,'English');
     await expect(page.getByRole('heading',{name:'Notifications'})).toBeVisible();
     await expect(budgetNotice.getByRole('link',{name:'Open source'})).toBeVisible();
     await expect(budgetNotice).toContainText('100.0000');
@@ -158,13 +173,13 @@ test('signup, OTP verification, login, password reset, and logout', async ({ pag
     await page.getByRole('button',{name:/Alerts/}).click();
     await expect(page.getByRole('region',{name:'Alerts'})).toBeVisible();
     await expect(page.getByRole('region',{name:'Alerts'}).getByText('Financial details are hidden.').last()).toBeVisible();
-    await page.getByRole('button',{name:/Alerts/}).click();
+    await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByRole('button',{name:'Show amounts'}).click();
     await expect(budgetNotice).toContainText('100.0000');
     await page.getByRole('button',{name:/Alerts/}).click();
     const alertPanel=page.getByRole('region',{name:'Alerts'});
     await expect(alertPanel.getByRole('article').filter({hasText:'budget at 80%'})).toContainText('100.0000');
-    await page.getByRole('button',{name:/Alerts/}).click();
+    await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
     const readNotice=budgetNotice.getByRole('button',{name:'Mark read'});
     await readNotice.focus();

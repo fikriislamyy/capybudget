@@ -4,6 +4,8 @@ import { auth } from '../auth';
 import { client } from '../db';
 import { seedWorkspace } from '../tracking/routes';
 import { DEFAULT_PREFERENCES, isStepAdvance, parseOnboardingProgress, parsePreferences, parseProvision, type OnboardingStep } from './validate';
+import { supportedCurrencies } from './currencies';
+import { supportedTimezones } from './timezones';
 
 type Actor = { id: string; name: string };
 const q = (tx: TransactionSql, text: string, values: unknown[] = []) => tx.unsafe(text, values as never[]);
@@ -39,6 +41,16 @@ function onboardingJson(row: Record<string, unknown> | undefined) {
 }
 
 export const uxRoutes = new Elysia()
+  .get('/api/currencies', async ({ request }) => {
+    const actor = await actorFor(request);
+    if (actor instanceof Response) return actor;
+    return Response.json(await supportedCurrencies(), { headers: { 'Cache-Control': 'no-store' } });
+  })
+  .get('/api/timezones', async ({ request }) => {
+    const actor = await actorFor(request);
+    if (actor instanceof Response) return actor;
+    return Response.json(await supportedTimezones(), { headers: { 'Cache-Control': 'no-store' } });
+  })
   .get('/api/preferences', async ({ request }) => {
     const actor = await actorFor(request);
     if (actor instanceof Response) return actor;

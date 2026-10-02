@@ -3,88 +3,43 @@
 @import "shadcn-svelte/tailwind.css";
 @import "@fontsource-variable/fredoka";
 @import "@fontsource-variable/nunito-sans";
+@import "./tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
-:root {
-  font-family: 'Nunito Sans Variable', ui-sans-serif, system-ui, sans-serif;
-  color: #3B2A1E;
-  background: #FFF8EC;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  --background: #FFF8EC;
-  --foreground: #3B2A1E;
-  --card: #FFFFFF;
-  --card-foreground: #3B2A1E;
-  --popover: #FFFFFF;
-  --popover-foreground: #3B2A1E;
-  --primary: #8A5F3A;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F3E6CF;
-  --secondary-foreground: #5F4028;
-  --muted: #F3E6CF;
-  --muted-foreground: #705E4F;
-  --accent: #FFC53D;
-  --accent-foreground: #5F4028;
-  --destructive: #C7473A;
-  --border: #E6D5B8;
-  --input: #E6D5B8;
-  --ring: #1F7A96;
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: #F3E6CF;
-  --sidebar-foreground: #3B2A1E;
-  --sidebar-primary: #8A5F3A;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #EAD9BA;
-  --sidebar-accent-foreground: #3B2A1E;
-  --sidebar-border: #E6D5B8;
-  --sidebar-ring: #1F7A96;
-}
+
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; }
 
-.dark {
-  --background: #2A211B;
-  --foreground: #FFF1DC;
-  --card: #372C24;
-  --card-foreground: #FFF1DC;
-  --popover: #372C24;
-  --popover-foreground: #FFF1DC;
-  --primary: #B98B5E;
-  --primary-foreground: #2A211B;
-  --secondary: #443729;
-  --secondary-foreground: #FFF1DC;
-  --muted: #443729;
-  --muted-foreground: #D6C4AB;
-  --accent: #FFC53D;
-  --accent-foreground: #3B2A1E;
-  --destructive: #FF7A6B;
-  --border: #52422F;
-  --input: #52422F;
-  --ring: #5BB8D4;
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: #372C24;
-  --sidebar-foreground: #FFF1DC;
-  --sidebar-primary: #B98B5E;
-  --sidebar-primary-foreground: #2A211B;
-  --sidebar-accent: #443729;
-  --sidebar-accent-foreground: #FFF1DC;
-  --sidebar-border: #52422F;
-  --sidebar-ring: #5BB8D4;
+/* One sidebar-matched scrollbar for the document and every nested/portaled scroller.
+   This changes appearance only; each component still owns its overflow behavior. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-primary) var(--sidebar);
+}
+@media (forced-colors: none) {
+  *::-webkit-scrollbar { width:8px; height:8px; }
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-corner { background:var(--sidebar); }
+  *::-webkit-scrollbar-thumb {
+    background:var(--sidebar-primary);
+    border:2px solid var(--sidebar);
+    border-radius:var(--radius-button);
+  }
+  *::-webkit-scrollbar-thumb:hover { background:var(--sidebar-foreground); }
+}
+@media (forced-colors: active) {
+  * { scrollbar-width:auto; scrollbar-color:auto; }
 }
 
+
+
+
 @theme inline {
-  --font-sans: 'Nunito Sans Variable', sans-serif;
+  --font-sans: var(--font-body);
+  --font-display: var(--font-heading);
+  --color-brand-ink: var(--brand-ink);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -98,6 +53,12 @@ body { margin: 0; min-width: 320px; }
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-income: var(--income);
+  --color-income-ink: var(--income-ink);
+  --color-expense: var(--expense);
+  --color-expense-ink: var(--expense-ink);
+  --color-transfer: var(--transfer);
+  --color-transfer-ink: var(--transfer-ink);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -139,7 +100,7 @@ body { margin: 0; min-width: 320px; }
 
 ::view-transition-old(root) { animation: none; z-index: 0; }
 ::view-transition-new(root) {
-  animation: diagonal-theme-reveal 720ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: diagonal-theme-reveal var(--dur-reveal) cubic-bezier(0.22, 1, 0.36, 1);
   z-index: 1;
 }
 
@@ -150,4 +111,172 @@ body { margin: 0; min-width: 320px; }
 
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-new(root) { animation-duration: 1ms; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Shared geometry and usable controls across every route family. */
+[data-slot="card"] { border-radius:var(--radius-card); box-shadow:var(--shadow-card); }
+[data-mode="business"] { --radius-card:var(--radius); --card-space:16px; }
+[data-slot="input"], [data-slot="textarea"] { border-radius:var(--radius-input); min-height:44px; font-size:1rem; }
+[data-slot="button"] { border-radius:var(--radius-pill); min-height:44px; }
+[data-slot="button"][class*="size-"] { min-width:44px; }
+[data-slot="sheet-content"], [data-slot="dialog-content"] { max-height:calc(100dvh - 32px); }
+[data-slot="sheet-content"] > :not([data-slot="sheet-header"]):not([data-slot="sheet-close"]) { min-height:0; }
+@media(max-width:767px) {
+  button:not([role="radio"]):not([role="checkbox"]):not([role="switch"]), [role="button"] { min-height:44px; }
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size:16px; }
+}
+
+/* Keep native keyboard/option behavior while containing WebKit's option text. */
+select {
+  min-height:44px;
+  min-width:0;
+  max-width:100%;
+  appearance:none;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  padding-right:2rem !important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23967B63' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 0.75rem center;
+}
+[data-slot="radio-group-item"] { position:relative; }
+[data-slot="radio-group-item"]::before { content:""; position:absolute; inset:-14px; }
+[data-slot="input"], [data-slot="textarea"] { border-color:var(--input); }
+
+/* The landing page's calm visual language, shared by account and finance pages. */
+h1, h2, h3, [data-slot="card-title"], [data-slot="dialog-title"], [data-slot="sheet-title"] {
+  font-family:var(--font-heading);
+  font-weight:500;
+  letter-spacing:-0.025em;
+  color:var(--brand-ink);
+}
+[data-slot="card-title"] { font-size:1.125rem; line-height:1.35; }
+[data-slot="card-description"] { line-height:1.75; }
+[data-slot="button"] { cursor:pointer; font-weight:800; transition:background-color 180ms, box-shadow 180ms, transform 180ms var(--ease-spring); }
+[data-slot="button"]:active:not(:disabled):not([aria-disabled="true"]):not([aria-haspopup]) { transform:scale(.96); }
+[data-slot="input"], [data-slot="textarea"] { background:var(--background); padding-inline:14px; }
+select, textarea, input { accent-color:var(--brand-ink); }
+select { border-radius:var(--radius-input); }
+[data-slot="dialog-content"], [data-slot="sheet-content"], [data-slot="dropdown-menu-content"], [data-slot="popover-content"] {
+  border-color:var(--border); box-shadow:var(--shadow-raised);
+}
+[data-slot="dialog-content"] { border-width:2px; border-radius:var(--radius-card); }
+[data-slot="sheet-content"] { background:var(--card); }
+[data-slot="progress"] { height:12px; border:1px solid var(--border); background:var(--secondary); border-radius:14px; }
+[data-slot="progress-indicator"] { background:var(--pond-blue); border-radius:14px; }
+.app-shell table th { background:var(--secondary); color:var(--brand-ink); font-weight:800; }
+.app-shell table td, .app-shell table th { padding:12px; }
+.app-shell table tbody tr:hover { background:color-mix(in srgb,var(--secondary) 35%,transparent); }
+.auth-page .auth-card { box-shadow:var(--shadow-raised); }
+@media(max-width:600px) {
+  [data-slot="card"] { --card-spacing:20px; }
+}
+
+[data-slot="progress"][data-tone="leaf"] [data-slot="progress-indicator"] { background:var(--leaf-green); }
+[data-slot="progress"][data-tone="warning"] [data-slot="progress-indicator"] { background:var(--yuzu-yellow); }
+[data-slot="progress"][data-tone="expense"] [data-slot="progress-indicator"] { background:var(--berry-coral); }
+
+/* Workspaces keep the same brand, with a quieter business density. */
+[data-mode="business"] [data-slot="card"] { --card-spacing:var(--space-4); }
+[data-mode="business"] table td, [data-mode="business"] table th { padding:var(--space-2) var(--space-3); }
+[data-mode="business"] [data-slot="card-title"] { font-size:1rem; }
+[data-mode="business"] .balance-intro { --capy-context-size:32px; }
+[data-mode="business"] .capy-heading { --capy-context-size:32px; }
+[data-mode="business"] [data-slot="card"] { box-shadow:var(--shadow-card); }
+[data-slot="alert"] { border:2px solid var(--border); border-radius:var(--radius-input); background:var(--secondary); }
+[role="status"]:not(:empty) { animation:steam-confirm var(--dur-base) var(--ease-spring); }
+@keyframes steam-confirm { from { opacity:.4; transform:translateY(4px); } to { opacity:1; transform:none; } }
+[data-slot="progress-indicator"] { transition:transform var(--dur-base) var(--ease-spring),background-color var(--dur-base); }
+[data-slot="progress"][data-tone="pond"] { background:color-mix(in srgb,var(--pond-blue) 10%,var(--card)); }
+[data-slot="progress"][data-tone="pond"] [data-slot="progress-indicator"] { background:var(--pond-blue); }
+
+[data-slot="button"] { min-width:44px; }
+@media(max-width:767px) { .app-shell td a { display:inline-flex;align-items:center;min-height:44px; } }
+
+[data-slot="input"], [data-slot="textarea"], .app-shell select { border-width:2px; }
+
+/* Overlay dismissal and text actions must be as easy to tap as form controls. */
+[data-slot="sheet-close"], [data-slot="dialog-close"], [data-slot="alert-dialog-close"] { min-width:44px; min-height:44px; }
+.app-shell a.row, .app-shell td a { min-height:44px; }
+.app-shell td a { display:inline-flex; align-items:center; }
+
+/* Consistent everyday spacing and controls, including portaled popups. */
+[data-slot="card"] { --card-spacing:24px; gap:16px; min-width:0; }
+[data-slot="card-header"] { gap:8px; }
+[data-slot="card-content"] { display:flex; flex-direction:column; gap:16px; min-width:0; }
+[data-slot="card-footer"] { gap:8px; flex-wrap:wrap; }
+[data-slot="field-group"] { gap:16px; }
+[data-slot="field"] { gap:8px; min-width:0; }
+[data-slot="field-set"] { gap:16px; min-width:0; }
+[data-slot="select-trigger"] { width:100%; min-width:0; min-height:44px; height:auto; border:2px solid var(--input); border-radius:var(--radius-input); padding:8px 12px; background:var(--background); color:var(--foreground); font-family:var(--font-body); font-size:14px; line-height:1.5; }
+[data-slot="select-value"] { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+[data-slot="select-content"], .workspace-switcher-menu, [data-slot="popover-content"] { border:2px solid var(--border); border-radius:var(--radius-input); background:var(--popover); color:var(--popover-foreground); box-shadow:var(--shadow-raised); max-width:calc(100vw - 16px); }
+[data-slot="select-content"], .workspace-switcher-menu { padding:8px; }
+[data-slot="select-content"] { max-height:min(360px,var(--bits-select-content-available-height)); }
+.workspace-switcher-menu { max-height:min(360px,var(--bits-dropdown-menu-content-available-height)); }
+.workspace-switcher-menu [role="menuitemradio"], .workspace-switcher-menu [role="menuitem"], [data-slot="select-item"] { min-height:44px; padding:8px 32px 8px 12px; border-radius:var(--radius-input); cursor:pointer; white-space:normal; }
+[data-slot="select-item"] > span:last-child { white-space:normal; overflow-wrap:anywhere; }
+.workspace-switcher-menu [data-highlighted], [data-slot="select-item"][data-highlighted] { background:var(--secondary); color:var(--secondary-foreground); }
+[data-slot="checkbox"] { width:24px; height:24px; border:2px solid var(--input); border-radius:8px; background:var(--background); }
+[data-slot="checkbox"][data-state="checked"], [data-slot="checkbox"][data-checked] { background:var(--primary); border-color:var(--primary); color:var(--primary-foreground); }
+[data-slot="checkbox"]::after { content:""; position:absolute; inset:-10px; }
+[data-slot="field-label"]:has([data-slot="checkbox"]), label:has([data-slot="checkbox"]) { display:flex; align-items:center; gap:12px; min-height:44px; cursor:pointer; }
+[data-slot="input"][type="file"] { height:auto; padding:8px 12px; }
+[data-slot="input"][type="file"]::file-selector-button { border-radius:var(--radius-button); background:var(--secondary); color:var(--secondary-foreground); padding:4px 12px; margin-right:12px; }
+[data-slot="popover-content"] [data-calendar-root] { --cell-size:44px; }
+[data-slot="date-picker"] + [data-slot="field-description"] { margin-top:0; }
+@media(max-width:767px) {
+  [data-slot="card"] { --card-spacing:16px; }
+  [data-slot="select-trigger"] { font-size:16px; }
+}
+[data-mode="business"] [data-slot="card"] { --card-spacing:16px; }
+
+/* Keep the busy state above sheets and their portaled controls. */
+.loading-backdrop { z-index:100; }
+.loading-overlay { z-index:101; }
+[data-slot="checkbox"] { position:relative; }
+
+[data-slot="toggle-group-item"] { min-width:44px; min-height:44px; height:auto; border-radius:var(--radius-input); white-space:normal; cursor:pointer; }
+
+@media(max-width:360px) {
+  .calendar-popover { padding:0; max-width:calc(100vw - 8px); }
+  .calendar-popover [data-calendar-root] { padding:0; }
+}
+
+/* Short composited transitions: no layout animation or permanent GPU layers. */
+@media(prefers-reduced-motion:no-preference) {
+  .app-shell main { animation:app-page-arrive 180ms ease-out; }
+  .app-shell [data-slot="card"] { transition:transform 160ms ease-out; }
+  .app-shell [data-slot="select-trigger"], .app-shell [data-slot="input"], .app-shell [data-slot="textarea"] { transition:border-color 140ms ease-out; }
+  .app-shell [data-slot="toggle-group-item"] { transition:background-color 140ms ease-out,color 140ms ease-out; }
+  .app-shell nav a { transition:background-color 140ms ease-out,color 140ms ease-out; }
+  @media(hover:hover) and (pointer:fine) {
+    .app-shell [data-slot="card"]:hover { transform:translateY(-2px); }
+  }
+}
+@keyframes app-page-arrive { from { opacity:0; } to { opacity:1; } }
+@media(prefers-reduced-motion:reduce) {
+  *, *::before, *::after { animation-iteration-count:1 !important; }
+}
+
+/* Keep numeric validation and mobile keyboards without native spinner buttons. */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }

@@ -1,3 +1,4 @@
+import { meetsPasswordPolicy } from '../../../shared/password-policy';
 import { createAuthMiddleware, APIError } from 'better-auth/api';
 import { client } from './db';
 import { acceptFactorCode } from './security/factor';
@@ -35,6 +36,9 @@ function frontendResetUrl(authUrl: string): string {
 export const auth = betterAuth({
   hooks: {
     before: createAuthMiddleware(async ctx => {
+      // Validate new credentials only; leave existing-password verification and dummy hashing unchanged.
+      const candidate = ctx.path === '/sign-up/email' ? ctx.body?.password : ['/reset-password', '/change-password', '/email-otp/reset-password'].includes(ctx.path) ? (ctx.body?.newPassword ?? ctx.body?.password) : undefined;
+      if (candidate !== undefined && !meetsPasswordPolicy(candidate)) throw new APIError('BAD_REQUEST', { code: 'PASSWORD_REQUIREMENTS', message: 'Use 12–128 characters including an uppercase letter, a lowercase letter, a number, and a symbol.' });
       if (ctx.path.startsWith('/two-factor/') && ctx.body?.trustDevice) throw new APIError('BAD_REQUEST',{message:'Trusted-device bypass is disabled.'});
       if (ctx.path === '/two-factor/send-otp' || ctx.path === '/two-factor/verify-otp') throw new APIError('NOT_FOUND',{message:'Use your authenticator or recovery code.'});
     }),
@@ -93,7 +97,9 @@ export const auth = betterAuth({
     }
   },
   emailVerification: {
-    sendOnSignUp: true,
+    // The email-OTP plugin sends the initial code from its post-signup hook.
+    // Avoid dispatching through the default verification flow during creation.
+    sendOnSignUp: false,
     sendOnSignIn: false,
     autoSignInAfterVerification: false
   },
@@ -108,6 +114,8 @@ export const auth = betterAuth({
     window: 60,
     max: 100,
     customRules: {
+      // SSR navigation reads share the web server IP; keep this bounded separately.
+      '/get-session': { window: 60, max: 1000 },
       '/sign-up/email': { window: 900, max: 5 },
       '/sign-in/email': { window: 900, max: 20 },
       '/email-otp/send-verification-otp': { window: 900, max: 5 },
@@ -141,7 +149,10 @@ export const auth = betterAuth({
   plugins: [
     twoFactor({ issuer: 'CapyBudget', skipVerificationOnEnable: false, backupCodeOptions: { storeBackupCodes: 'encrypted' } }),
     emailOTP({
-      overrideDefaultEmailVerification: true,
+      // Dispatch after signup finishes, using the request's auth context.
+      // Enabling the default override would disable this plugin hook.
+      sendVerificationOnSignUp: true,
+      overrideDefaultEmailVerification: false,
       otpLength: 6,
       expiresIn: 10 * 60,
       allowedAttempts: 5,

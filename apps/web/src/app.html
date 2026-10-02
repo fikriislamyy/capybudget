@@ -2,11 +2,11 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<script>
 			try {
-				var choice = localStorage.getItem('capybudget-theme') || 'system';
-				var dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+				var choice = localStorage.getItem('capybudget-theme') || 'light';
+				var dark = choice === 'dark' || (choice === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
 				if (dark) document.documentElement.classList.add('dark');
 				document.documentElement.dataset.theme = dark ? 'dark' : 'light';
 			} catch (e) { /* Default theme applies when storage is unavailable. */ }

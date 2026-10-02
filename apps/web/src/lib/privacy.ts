@@ -1,3 +1,4 @@
+import { cancelThemeTransition } from './theme';
 const privacyBase='capybudget-privacy-mode';
 let privacyKey=privacyBase;
 export function configurePrivacyMode(userId:string,defaultValue:boolean){privacyKey=privacyBase+':'+userId;memoryPreference=defaultValue;try{const saved=localStorage.getItem(privacyKey);if(saved===null)memoryPreference=defaultValue;else memoryPreference=saved==='true';}catch{memoryPreference=true;}return memoryPreference;}
@@ -11,6 +12,7 @@ export function readPrivacyMode(){
  }catch{return memoryPreference;}
 }
 export function writePrivacyMode(enabled:boolean){
+ if(enabled)cancelThemeTransition();
  memoryPreference=enabled;
  try{localStorage.setItem(privacyKey,String(enabled));}catch{}
  window.dispatchEvent(new Event('capybudget-privacy-change'));

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LoadingScope from '$lib/components/shared/loading-scope.svelte';
   import { goto } from '$app/navigation'; import { getContext } from 'svelte';
   import * as Card from '$lib/components/ui/card'; import * as Field from '$lib/components/ui/field';
   import * as OTP from '$lib/components/ui/input-otp'; import { Button } from '$lib/components/ui/button'; import { Input } from '$lib/components/ui/input';
@@ -37,7 +38,8 @@
     } catch { error = cooldown > 0 ? 'rate-limited' : t.genericError; } finally { busy = false; }
   }
 </script>
-<Card.Root class="auth-card"><Card.Header><Card.Title>{t.verifyTitle}</Card.Title><Card.Description>{t.verifyDescription}</Card.Description></Card.Header><Card.Content>
+<LoadingScope active={!!busy} />
+<Card.Root class="auth-card"><Card.Header><Card.Title role="heading" aria-level={1}>{t.verifyTitle}</Card.Title><Card.Description>{t.verifyDescription}</Card.Description></Card.Header><Card.Content>
   <form onsubmit={submit}><Field.FieldGroup>
     <Field.Field><Field.FieldLabel for="email">{t.email}</Field.FieldLabel><Input id="email" type="email" autocomplete="email" bind:value={email} required maxlength={254} /></Field.Field>
     <Field.Field><Field.FieldLabel for="otp">{t.code}</Field.FieldLabel><OTP.Root id="otp" bind:value={otp} maxlength={6} pattern="[0-9]*" inputmode="numeric" autocomplete="one-time-code" aria-label={t.code} class="otp">{#snippet children({ cells })}<OTP.Group>{#each cells as cell}<OTP.Slot {cell}/>{/each}</OTP.Group>{/snippet}</OTP.Root></Field.Field>
@@ -46,4 +48,4 @@
     <Button type="button" variant="outline" class="resend" disabled={busy || !email || cooldown > 0} onclick={resend}>{cooldown > 0 ? t.resendWait.replace('{seconds}', String(cooldown)) : t.resend}</Button>
   </Field.FieldGroup></form>
 </Card.Content><Card.Footer><a href="/login">{t.backLogin}</a></Card.Footer></Card.Root>
-<style>:global(.auth-card){width:100%;border-color:#e9ece8;box-shadow:0 18px 55px #24392a0d;border-radius:18px}:global(.auth-card) :global([data-slot=card-header]){padding:26px 26px 18px}:global(.auth-card) :global([data-slot=card-title]){font-family:'Fredoka Variable',sans-serif;font-size:25px;font-weight:500}:global(.auth-card) :global([data-slot=card-content]){padding:0 26px 24px}:global(.auth-card) :global([data-slot=card-footer]){padding:16px 26px;border-top:1px solid #eff1ee;justify-content:center}:global(.auth-card) :global([data-slot=card-footer] a){color:#498361;font-size:13px;font-weight:700;text-decoration:none}:global(.otp){justify-content:center}:global(.submit),:global(.resend){width:100%;height:44px;border-radius:10px}:global(.submit){background:#4d8966;color:white}.error{color:#a63434;font-size:13px;margin:0}.notice{color:#397753;font-size:13px;margin:0}</style>
+<style>:global(.auth-card){width:100%;border-color:var(--border);box-shadow:var(--shadow-raised);border-radius:20px}:global(.auth-card) :global([data-slot=card-header]){padding:26px 26px 18px}:global(.auth-card) :global([data-slot=card-title]){font-family:var(--font-heading);font-size:25px;font-weight:500}:global(.auth-card) :global([data-slot=card-content]){padding:0 24px 24px}:global(.auth-card) :global([data-slot=card-footer]){padding:16px 24px;border-top:1px solid var(--border);justify-content:center}:global(.auth-card) :global([data-slot=card-footer] a){color:var(--brand-ink);font-size:13px;font-weight:700;text-decoration:none}:global(.otp){justify-content:center}:global(.submit),:global(.resend){width:100%;height:44px;border-radius:999px}:global(.submit){background:var(--primary);color:var(--primary-foreground)}.error{color:var(--destructive);font-size:13px;margin:0}.notice{color:var(--income-ink);font-size:13px;margin:0}</style>

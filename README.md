@@ -2,7 +2,14 @@
 
 Personal finance application scaffold using SvelteKit, TypeScript, Tailwind CSS, Elysia, Eden Treaty, PostgreSQL, Drizzle, Better Auth, Redis, and SeaweedFS for local S3-compatible object storage.
 
-## Requirements
+## Deployment guides
+
+- [Free-tier VPS setup](docs/free-vps-setup.md): one-server recommendation, Oracle Cloud setup, DNS, networking and cost limits.
+- [Local Jenkins deployment](docs/deployment-jenkins.md): container named `jenkins`, production preparation, both domains, workers, HTTPS, backups and recovery.
+
+The deployment configuration examples are reference templates; complete the documented preparation before using them.
+
+## Local requirements
 
 - Bun 1.2+
 - Docker Compose
@@ -93,3 +100,15 @@ These checks cover concurrent scheduler processes, duplicate job claims, real SM
 ## Security and privacy
 
 Security settings, TOTP/recovery codes, app PIN/device unlock, session management, account export/deletion, field encryption, shared privacy masking and encrypted local SeaweedFS backups are implemented. Start the backup scheduler with `docker compose --profile backup up -d --build backup`. See [the setup, key rotation, restore and release-check runbook](docs/security-privacy.md) before enabling these features on existing data or deploying them.
+
+## Reset the local database
+
+Stop the API and workers, leave PostgreSQL running, then run this from the project root:
+
+```bash
+bun run db:fresh
+```
+
+This permanently deletes the database configured by `DATABASE_URL`, recreates it, and applies all checked-in Drizzle migrations. Type the database name to confirm. For an intentional noninteractive reset, use `bun run db:fresh --yes`. The command accepts only local PostgreSQL hosts, refuses production mode and system databases, and requires active database connections to be closed first. The configured database user must have permission to drop and create the database.
+
+Redis queues, uploaded files, and backups are retained. There is no separate demo-data seeder: sign up and complete onboarding to automatically create default categories and ledger accounts. If migration fails after the reset, fix the reported error and run `bun run db:migrate`.

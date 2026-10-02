@@ -248,10 +248,21 @@ export const bills = pgTable('bills', {
   categoryId: uuid('category_id'), frequency: text('frequency', { enum: ['once', 'week', 'month', 'year'] }).notNull(), interval: integer('interval').notNull().default(1),
   anchorDate: date('anchor_date').notNull(), nextDueDate: date('next_due_date').notNull(), endDate: date('end_date'),
   paymentAccountId: uuid('payment_account_id'), recurringRuleId: uuid('recurring_rule_id'),
+  expectedPaymentOffsetDays: integer('expected_payment_offset_days'), deferrableOffsetDays: integer('deferrable_offset_days'),
   reminderDays: integer('reminder_days').array().notNull().default([3, 0]), enabled: boolean('enabled').notNull().default(true),
   createdBy: text('created_by').references(() => user.id), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(), archivedAt: timestamp('archived_at', { withTimezone: true })
 }, (table) => [index('bills_due_idx').on(table.workspaceId, table.enabled, table.nextDueDate), uniqueIndex('bills_workspace_id_unique').on(table.workspaceId, table.id)]);
+
+export const billGroupForecastSettings = pgTable('bill_group_forecast_settings', {
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(), dueDay: integer('due_day').notNull(), paymentAccountId: uuid('payment_account_id'),
+  hasPaymentAccount: boolean('has_payment_account').notNull().default(false),
+  expectedPaymentOffsetDays: integer('expected_payment_offset_days'), hasExpectedOffset: boolean('has_expected_offset').notNull().default(false),
+  deferrableOffsetDays: integer('deferrable_offset_days'), hasDeferrableOffset: boolean('has_deferrable_offset').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [primaryKey({ columns: [table.workspaceId, table.name, table.dueDay] }),
+  foreignKey({ columns: [table.workspaceId, table.paymentAccountId], foreignColumns: [accounts.workspaceId, accounts.id] })]);
 
 export const billOccurrences = pgTable('bill_occurrences', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id), billId: uuid('bill_id').notNull(),

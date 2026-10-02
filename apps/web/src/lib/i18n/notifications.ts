@@ -1,3 +1,4 @@
+import { formatDate, formatDatesInText } from '$lib/dates';
 import type { Locale } from './auth';
 
 export type NoticeMessage = { kind: string; messageKey?: string; title: string; message: string; messageParams?: Record<string, unknown> | null };
@@ -35,12 +36,12 @@ export function notificationTitle(item: NoticeMessage, locale: Locale): string {
 
 export function notificationMessage(item: NoticeMessage, locale: Locale): string {
   const p = item.messageParams ?? {}, id = locale === 'id';
-  if (item.messageKey?.startsWith('forecast.')) return `${id ? 'Tinjau proyeksi arus kas untuk' : 'Review the cashflow forecast for'} ${p.date ?? p.dueDate ?? ''}.`;
-  if (item.messageKey?.startsWith('invoice.')) return `${id ? 'Sisa' : 'Outstanding'}: ${money(p.amount, p.currency, locale)} · ${p.dueDate ?? ''}`;
-  if (item.messageKey === 'bill.overdue' || item.messageKey === 'bill.today' || item.messageKey === 'bill.upcoming' || item.messageKey?.startsWith('payment.')) return `${money(p.amount, p.currency, locale)} · ${p.dueDate ?? ''}`;
+  if (item.messageKey?.startsWith('forecast.')) return `${id ? 'Tinjau proyeksi arus kas untuk' : 'Review the cashflow forecast for'} ${formatDate(p.date ?? p.dueDate, '')}.`;
+  if (item.messageKey?.startsWith('invoice.')) return `${id ? 'Sisa' : 'Outstanding'}: ${money(p.amount, p.currency, locale)} · ${formatDate(p.dueDate, '')}`;
+  if (item.messageKey === 'bill.overdue' || item.messageKey === 'bill.today' || item.messageKey === 'bill.upcoming' || item.messageKey?.startsWith('payment.')) return `${money(p.amount, p.currency, locale)} · ${formatDate(p.dueDate, '')}`;
   if (item.messageKey === 'balance.low') return `${id ? 'Saldo tercatat' : 'Recorded balance'}: ${money(p.balance, p.currency, locale)} · ${id ? 'Batas' : 'Limit'}: ${money(p.threshold, p.currency, locale)}`;
   if (item.messageKey === 'budget.threshold') return `${money(p.spent, p.currency, locale)} ${id ? 'dari' : 'of'} ${money(p.amount, p.currency, locale)}`;
   if (item.messageKey === 'budget.zero') return `${money(p.spent, p.currency, locale)} ${id ? 'dibelanjakan pada anggaran nol' : 'spent against a zero budget'}`;
   if (item.messageKey === 'spending.unusual') return id ? 'Pengeluaran ini lebih tinggi daripada pola sebelumnya pada kategori dan mata uang yang sama. Ini bukan penilaian penipuan.' : 'This expense is above the recent pattern for the same category and currency. This is not a fraud determination.';
-  return item.message;
+  return formatDatesInText(item.message);
 }

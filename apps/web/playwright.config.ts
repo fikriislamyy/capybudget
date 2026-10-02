@@ -17,26 +17,30 @@ if (!/^\d+$/.test(redisDatabase) || Number(redisDatabase) === 0) {
 }
 
 export default defineConfig({
-  testDir: './tests/auth',
+  testDir: './tests',
+  outputDir:'test-results/'+(process.env.UI_BROWSER??'chromium'),
+  testMatch:'**/*.spec.ts',
   fullyParallel: false,
+  workers:1,
   timeout: 60_000,
   expect: { timeout: 10_000 },
   use: {
     baseURL: webOrigin,
-    browserName: 'chromium',
+    ...(process.env.UI_BROWSER_WS?{connectOptions:{wsEndpoint:process.env.UI_BROWSER_WS,exposeNetwork:'<loopback>'}}:{}),
+    browserName: process.env.UI_BROWSER==='firefox'?'firefox':process.env.UI_BROWSER==='webkit'?'webkit':'chromium',
     trace: 'retain-on-failure'
   },
   webServer: [
     {
       command: `PORT=${apiPort} PUBLIC_APP_URL=${webOrigin} BETTER_AUTH_URL=${webOrigin} WEB_ORIGIN=${webOrigin} bun --env-file=../../.env --hot ../api/src/dev.ts`,
       url: `${apiOrigin}/api/health`,
-      reuseExistingServer: false,
+      reuseExistingServer: process.env.UI_REUSE_SERVERS === '1',
       timeout: 30_000
     },
     {
-      command: `PUBLIC_API_URL=${webOrigin} API_INTERNAL_URL=${apiOrigin} PUBLIC_APP_URL=${webOrigin} BETTER_AUTH_URL=${webOrigin} WEB_ORIGIN=${webOrigin} bun --env-file=../../.env run vite dev --host 127.0.0.1 --port ${webPort}`,
+      command: `PUBLIC_API_URL=${webOrigin} API_INTERNAL_URL=${apiOrigin} PUBLIC_APP_URL=${webOrigin} BETTER_AUTH_URL=${webOrigin} WEB_ORIGIN=${webOrigin} bun --env-file=../../.env run vite ${process.env.UI_PRODUCTION === '1' ? 'preview' : 'dev'} --host 127.0.0.1 --port ${webPort}`,
       url: `${webOrigin}/login`,
-      reuseExistingServer: false,
+      reuseExistingServer: process.env.UI_REUSE_SERVERS === '1',
       timeout: 60_000
     }
   ]
