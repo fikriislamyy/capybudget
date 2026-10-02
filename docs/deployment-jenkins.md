@@ -305,6 +305,39 @@ Monitor disk space, memory, container restarts, queue failures, TLS renewal, SMT
 
 ## 10. Common problems
 
+### Caddy fails with `failed to set up container networking: Address already in use`
+
+The original network template allowed automatic container allocation to use Caddy's fixed `172.30.0.2` address. The corrected configuration keeps automatic allocations in `172.30.0.128/25`:
+
+```yaml
+networks:
+  app:
+    ipam:
+      config: [{subnet: 172.30.0.0/24, ip_range: 172.30.0.128/25}]
+```
+
+Docker's [IPAM configuration](https://docs.docker.com/reference/compose-file/networks/#ipam) supports a separate allocation range within the subnet. Caddy keeps `172.30.0.2`, matching `TRUSTED_PROXY_IPS`. An existing Docker network must be recreated to apply this change.
+
+If the first deployment already migrated the database and started API/web, finish that failed release rather than rerunning `FIRST_DEPLOY=true`. On the VPS, find the failed release directory from the Jenkins build number; do not assume `/opt/capybudget/current` exists yet. Change into that release, edit its `docs/deployment/examples/compose.production.yml` to use the corrected network above, then:
+
+```sh
+export APP_RELEASE="$(basename "$PWD")"
+docker compose --env-file /opt/capybudget/secrets/production.env -p capybudget -f docs/deployment/examples/compose.production.yml config --quiet
+docker compose --env-file /opt/capybudget/secrets/production.env -p capybudget -f docs/deployment/examples/compose.production.yml down
+docker compose --env-file /opt/capybudget/secrets/production.env -p capybudget -f docs/deployment/examples/compose.production.yml up -d --wait --wait-timeout 180
+curl --fail --silent --show-error --retry 6 --retry-delay 5 --retry-all-errors https://capybudget.bebem.my.id/api/health
+curl --fail --silent --show-error https://api.capybudget.bebem.my.id/api/health
+curl --fail --silent --show-error --output /dev/null https://capybudget.bebem.my.id/login
+```
+
+`down` recreates containers/network and preserves named volumes; **do not add `-v`**. Only after startup and all three HTTP checks pass, record the recovered release:
+
+```sh
+ln -sfn "$PWD" /opt/capybudget/current
+```
+
+Ensure the corrected template is committed and pushed before the next Jenkins run. Subsequent deployments use `FIRST_DEPLOY=false`. If a networking error remains, inspect `docker network inspect capybudget_app` for duplicate addresses and `sudo ss -lntup` for host port 80/443 conflicts; port-bind errors and container-IP conflicts need different fixes.
+
 Documentation checks completed: both Compose templates pass configuration validation (production used dummy interpolation values and skipped secret-file resolution), the deployment script passes Bash syntax checking, and local documentation links resolve. Images have not been built or exercised on a VPS; Jenkins, SSH, SMTP, S3, HTTPS and application smoke checks must be completed in your deployment environment.
 
 | Symptom | Check |
