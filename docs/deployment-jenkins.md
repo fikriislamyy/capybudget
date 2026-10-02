@@ -25,9 +25,9 @@ flowchart LR
   Backup[Backup scheduler] -->|encrypted copies| S3[Off-host S3 bucket]
 ```
 
-Two hostnames do not require two servers. A second VPS would divide the free CPU/RAM budget, require private networking between services, and increase maintenance. Split later if measurements show contention or you need stronger fault isolation; moving only the frontend will not remove the database's single point of failure. This single-VPS setup has downtime during updates and is not highly available.
+Two hostnames do not require two servers. A second EC2 instance would consume the same AWS credit pool faster, require networking between services, and increase maintenance. Split later if measurements show contention or you need stronger fault isolation; moving only the frontend will not remove the database's single point of failure. This single-VPS setup has downtime during updates and is not highly available.
 
-Local Jenkins can be switched off after deployment; the VPS keeps serving the app. Jenkins must be running, with internet access, when deploying. Builds run **on the VPS** so Oracle ARM64 does not require cross-building on your x86 laptop. Allow a maintenance window and monitor memory during builds.
+Local Jenkins can be switched off after deployment; the VPS keeps serving the app. Jenkins must be running, with internet access, when deploying. Builds run **on the VPS** and produce images for its native architecture (x86-64 on the recommended EC2 instance). Allow a maintenance window and monitor memory during builds.
 
 ## 2. Understand the domain configuration
 
@@ -186,7 +186,7 @@ Mailpit remains for local testing only. Production signup OTPs require a real SM
 4. Use the provider's submission port: typically 587 with `SMTP_SECURE=false` for STARTTLS, or 465 with `SMTP_SECURE=true` for implicit TLS. Do not use an unencrypted relay.
 5. Run the email worker and verify **initial signup**, resend OTP, password reset, and an opted-in reminder from a real inbox. Check spam and provider delivery logs.
 
-Oracle Email Delivery is an option; see the provider guide. Account approval, quotas, sender reputation and delivery are separate from the VPS itself. An HTTP health check does not prove mail works.
+Amazon SES is an option if available in your AWS plan and approved for production sending; see the provider guide. Account approval, quotas, sender reputation and delivery are separate from the VPS itself. An HTTP health check does not prove mail works.
 
 ### Off-host S3 backup destination
 
@@ -220,7 +220,7 @@ The supplied image installs Pipeline, Git, SSH Agent, Credentials Binding, and T
 1. On your computer, generate a dedicated key: `ssh-keygen -t ed25519 -f ~/.ssh/capybudget_jenkins -C capybudget-jenkins`. Use a passphrase and store it in Jenkins along with the private key.
 2. Install **only the `.pub` key** in `/home/deploy/.ssh/authorized_keys` on the VPS. Keep the existing administrator key.
 3. In Jenkins → Manage Jenkins → Credentials, add **SSH Username with private key**, ID `capybudget-vps-ssh`, username `deploy`.
-4. Obtain the server's Ed25519 host fingerprint from a trusted initial SSH/OCI console session with `sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`.
+4. Obtain the server's Ed25519 host fingerprint from a trusted initial SSH session established using the verified EC2 host identity with `sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`.
 5. On your computer, use `ssh-keyscan -t ed25519 VPS_IP > capybudget-known-hosts` and `ssh-keygen -lf capybudget-known-hosts`. Compare fingerprints before trusting the file; keyscan alone does not authenticate the server.
 6. Add that verified file as a Jenkins **Secret file**, ID `capybudget-known-hosts`. The pipeline enforces host-key checking. Update it deliberately if rebuilding the VPS changes its host key.
 
@@ -313,8 +313,8 @@ Documentation checks completed: both Compose templates pass configuration valida
 | Everyone seems rate limited | Caddy peer IP and single-hop trust configuration; no extra proxy enabled silently |
 | OTP not delivered | Production SMTP sender/auth settings, email worker and queue/provider logs; Mailpit is not an external relay |
 | Receipt or deletion fails with AccessDenied | Seaweed credentials, backup bucket `CreateBucket` permissions, historical encryption keys |
-| PDF export fails | Locked Playwright browser installed inside image; native ARM64 build; RAM/headroom |
-| Certificate not issued | Both DNS records, absent stale AAAA records, public 80/443, OCI and host firewalls |
+| PDF export fails | Locked Playwright browser installed inside image; native architecture build; RAM/headroom |
+| Certificate not issued | Both DNS records, absent stale AAAA records, public 80/443, EC2 security group and host firewall |
 | Backup restore drill fails | Database creation permission, temporary bucket creation/deletion, PostgreSQL 18 tools, complete keyring |
 | SSH deployment fails | Home public IP allowed on port 22, verified known-hosts file, deploy public key, Jenkins running |
 | Changes missing after deployment | Files committed and pushed to the configured release branch; git archive excludes uncommitted files |

@@ -4,7 +4,7 @@ Personal finance application scaffold using SvelteKit, TypeScript, Tailwind CSS,
 
 ## Deployment guides
 
-- [Free-tier VPS setup](docs/free-vps-setup.md): one-server recommendation, Oracle Cloud setup, DNS, networking and cost limits.
+- [Free-tier VPS setup](docs/free-vps-setup.md): one-server recommendation, AWS EC2 Free Tier setup, DNS, networking and credit limits.
 - [Local Jenkins deployment](docs/deployment-jenkins.md): container named `jenkins`, production preparation, both domains, workers, HTTPS, backups and recovery.
 
 The deployment configuration examples are reference templates; complete the documented preparation before using them.

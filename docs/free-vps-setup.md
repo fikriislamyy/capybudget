@@ -1,67 +1,72 @@
-# Free-tier VPS setup for CapyBudget
+# AWS EC2 free-tier VPS setup for CapyBudget
 
-Checked against provider documentation on **2 October 2026**. Free-tier terms can change; confirm your console's eligibility and cost estimate before creating resources. After preparing the VPS, follow the [Jenkins deployment guide](deployment-jenkins.md).
+Checked against AWS documentation on **2 October 2026**. This guide uses **Amazon EC2**, with Jenkins running locally in a container named `jenkins`. After preparing the server, follow the [Jenkins deployment guide](deployment-jenkins.md).
 
-## 1. Choose one VPS initially
+## 1. Understand the AWS free plan and choose one server
 
-My recommendation is **one Oracle Cloud Ampere A1 VPS**, Ubuntu 24.04 ARM64, starting at **2 OCPUs and 12 GB RAM** if your account and region have free capacity. Run Jenkins locally, outside the VPS. This sizing is a starting estimate for a small deployment, not a measured concurrency guarantee.
+For eligible new customers, AWS provides $100 in initial credits and opportunities to earn up to $100 more. The **Free account plan ends after six months or when credits run out, whichever happens first**. Choosing the Paid plan permits charges beyond credits. Existing or former AWS customers may not qualify for new-customer credits. Check your account's actual plan, credit balance and expiry in Billing before launching anything. [AWS Free Tier FAQ](https://aws.amazon.com/free/free-tier-faqs/).
 
-Oracle's current documentation lists 1,500 OCPU-hours and 9,000 GB-hours monthly for A1, equivalent to 2 OCPUs/12 GB total, plus 200 GB combined boot/block storage. These are tenancy-wide allowances, not per-server grants. Older tutorials claiming 4 OCPUs/24 GB do not match the current page. Always Free compute must be in the home region; capacity can be unavailable and idle instances may be reclaimed. [Oracle Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm).
+The EC2 “Free tier eligible” label does **not** mean unlimited free instance-hours or that a server will run for six months on the initial credit. Accounts created before 15 July 2025 have different legacy rules; do not follow old “750 hours of t2.micro for 12 months” tutorials for a new account. [EC2 eligibility](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html).
 
-| Choice | Fit for CapyBudget |
+Use **one EC2 instance** for the web, API, database, Redis, SeaweedFS and workers. Two servers consume credits faster and add networking/maintenance work. Both `capybudget.bebem.my.id` and `api.capybudget.bebem.my.id` point to the same public IPv4 address. Caddy routes requests to the correct container.
+
+| Instance choice | Recommendation for this repository |
 | --- | --- |
-| One A1 VPS | Recommended initially: CPU/RAM available to API, database, workers and PDF generation together; one server to maintain |
-| Two A1 VPSs | Same total free allowance split across two systems; extra boot storage/networking/maintenance; no automatic high availability |
-| Oracle E2 micro | Too constrained for this complete stack and PDF/build workload |
-| Google Cloud ongoing free VM | Eligible `e2-micro` in selected US regions, 30 GB standard disk, limited outbound traffic; not my choice for this full stack. [Google free tier](https://docs.cloud.google.com/free/docs/free-cloud-features) |
-| AWS new-account free plan | Time/credit limited: up to six months or credit exhaustion, not an indefinite free VPS. [EC2 free tier](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html) |
+| `m7i-flex.large` | Preferred starting point if eligible and available: 2 vCPUs, 8 GiB RAM, x86-64. More headroom for database, workers, Chromium PDFs and image builds; consumes credits faster than a small instance |
+| `c7i-flex.large` | Eligible alternative listed by AWS; assess its smaller memory allocation and regional cost before choosing it |
+| `t3.small` / `t4g.small` | Lower-cost experiments, but tight for the entire stack plus builds; require memory/workload tuning. T4g needs ARM64 images |
+| Micro instances | Not recommended for this complete stack; do not assume swap makes production PDFs and builds reliable |
 
-If Oracle has no capacity, try another availability domain within your home region or wait. Do not select a paid shape assuming trial credits make it permanently free. If reliable availability is required immediately, plan a paid fallback rather than promising that a free VPS can always be obtained.
+The size recommendation is an engineering estimate, not a load-test result. See [M7i-flex specifications](https://aws.amazon.com/ec2/instance-types/m7i/) and the EC2 eligibility link above. Select an eligible instance offered in your actual account/region; do not upgrade to the Paid plan just to unlock a size without reviewing the cost.
 
-Both `capybudget.bebem.my.id` and `api.capybudget.bebem.my.id` point to this **same VPS IPv4 address**. Caddy chooses the correct container using the hostname and URL path.
+Before launch, use the [AWS Pricing Calculator](https://calculator.aws/) for the selected region: Linux On-Demand instance × expected hours, EBS disk, public IPv4, snapshots and data transfer. Estimate credit lifetime as `available credits / estimated daily eligible usage cost`. For illustration only, $100 divided by $3/day lasts about 33 days, not six months. This example is not a price quote. Plan migration or paid hosting before credits expire.
 
-## 2. Create and secure the cloud account
+## 2. Create and secure the AWS account
 
-1. Sign up at [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/). Complete the identity/payment verification required for your account.
-2. Choose the home region carefully, considering latency for Indonesian users and A1 availability. Do not assume a nearby region has free capacity.
-3. Enable MFA on the cloud administrator account. Store recovery codes safely.
-4. Create a compartment named `capybudget` to group project resources.
-5. Check Billing/Cost Analysis, service limits and quotas. Set budget alerts and review the resources after the trial ends. Budget alerts notify; they are not a hard spending cap.
-6. Use Always Free-eligible resources explicitly. Avoid paid load balancers, managed databases, extra volumes, marketplace licenses and unnecessary public IPs.
+1. Sign up through [AWS Free Tier](https://aws.amazon.com/free/) and choose the **Free account plan** if offered and suitable. Complete the required identity/payment verification.
+2. Enable MFA on the root account and keep recovery information safe. Use a separate administrative identity for routine work; do not create root access keys.
+3. Choose one region for EC2 and its disk. For Indonesian users, compare Jakarta and Singapore latency, instance availability and prices; use the eligible region that fits your budget. Region selection is not a free-tier guarantee.
+4. In Billing and Cost Management, confirm your plan, credited amount and expiry. Create budget/usage alerts and check credit consumption regularly. Alerts are notifications, not a hard spending cap on a Paid account.
+5. Tag project resources with `Project=capybudget` and `Environment=production` for cost tracking.
+6. Keep the setup to EC2 plus its disk/public IP. Do not add NAT Gateway, load balancers, RDS, Marketplace subscriptions, Savings Plans or Reserved Instances for this initial deployment.
 
-## 3. Create networking
+## 3. Create networking and a security group
 
-Create a VCN with a public subnet and internet gateway using the console's networking wizard. Confirm the subnet's IPv4 route sends `0.0.0.0/0` to that internet gateway.
+Use a default VPC with a public subnet if one exists. Otherwise create a VPC, one public subnet and an internet gateway; associate a route table with `0.0.0.0/0` pointing to that gateway. A public subnet also needs a public IP on the instance. When using the VPC wizard, choose **no NAT gateways** and no optional paid endpoints for this setup.
 
-Attach a network security group to the VPS with the following **stateful inbound** rules:
+Create a security group named `capybudget-web` in that VPC with these inbound rules:
 
 | Port | Source | Purpose |
 | --- | --- | --- |
 | TCP 22 | Your home/public IP `/32` | Administrator and local Jenkins SSH |
-| TCP 80 | `0.0.0.0/0` | HTTPS certificate validation and redirect |
+| TCP 80 | `0.0.0.0/0` | Certificate validation and HTTPS redirect |
 | TCP 443 | `0.0.0.0/0` | Public app/API HTTPS |
 | UDP 443 | `0.0.0.0/0`, optional | Caddy HTTP/3 |
 
-Review subnet security lists too: an existing broad SSH rule can undermine the narrower NSG rule. Remove broad port-22 rules only after confirming your administrator IP is allowed. Allow outbound traffic needed for DNS, time sync, package/image downloads, HTTPS object storage and SMTP submission. Preserve required cloud networking/ICMP rules.
+Keep the default outbound access initially so DNS, package downloads, HTTPS storage and SMTP submission work. Review all security groups attached to the instance: their permissions combine, so another group with broad SSH access would defeat the `/32` restriction. If using custom network ACLs, allow the required return traffic too.
 
-Do **not** open 3000, 5173, 5432, 6379, 8333, 8025, 1025 or Jenkins 8080 to the internet. If your home IP changes, update the port-22 source before deploying again.
+Do **not** expose 3000, 5173, 5432, 6379, 8333, 8025, 1025 or Jenkins 8080. If your home IP changes, update the SSH rule before deploying again. AWS CLI credentials are not needed for the SSH-based Jenkins pipeline.
 
-## 4. Create the instance
+## 4. Launch the EC2 instance
 
-1. Compute → Instances → Create instance; name it `capybudget-prod`.
-2. Select the `capybudget` compartment and your home region.
-3. Choose an eligible **Ubuntu 24.04 ARM64** image and **VM.Standard.A1.Flex** shape.
-4. Allocate **2 OCPUs / 12 GB RAM**, accounting for any other A1 resources in the tenancy.
-5. Choose a 100 GB boot volume if the console confirms it fits the free storage allowance. Leave room in the tenancy budget for other volumes; track Docker image/cache growth on this disk.
-6. Select the public subnet, assign a public IPv4 address, attach the NSG, and upload your administrator SSH **public** key. Keep the private key on your computer.
-7. Confirm the image, storage and shape eligibility/cost summary, then create the instance. Keep boot-volume encryption enabled and review the provider's encryption settings.
-8. Record the public IPv4, instance ID, region, image and architecture. Check whether the IP will change if the instance is recreated; update DNS if it does.
+1. EC2 → Instances → **Launch instances**; name it `capybudget-prod`.
+2. Select Canonical's official **Ubuntu Server 24.04 LTS, 64-bit x86** AMI. Check the publisher and avoid Ubuntu Pro/Marketplace images with additional software charges.
+3. Select **`m7i-flex.large`** only if the console marks it eligible and offers it in your selected region/account. Review the estimated hourly cost. If unavailable, compare eligible alternatives; do not silently switch to a paid-only type.
+4. Create/download a dedicated administrator key pair, or import your existing public key. Keep the private key outside Git. On Linux/WSL, restrict its permissions with `chmod 600 ~/.ssh/your_admin_key`.
+5. Select the public subnet, enable public IPv4 assignment, and attach `capybudget-web`.
+6. Start with **40 GiB encrypted gp3 EBS storage**, default IOPS/throughput. This is a capacity suggestion, not a free storage entitlement; it consumes the applicable allowance/credits. Monitor image caches, database and receipt growth. Prefer the AWS-managed EBS encryption key unless you need a separate customer-managed key.
+7. Require instance metadata version 2 (IMDSv2). Leave Spot, hibernation and optional detailed monitoring disabled for this simple deployment. Review disk deletion-on-termination settings and enable termination protection if available.
+8. Confirm the launch summary and start **one** instance. Wait for EC2 status checks to pass. Record instance ID, region, AMI and public IPv4.
 
-An ARM instance requires ARM-compatible images/binaries. The deployment templates build on the VPS and use Debian-based application images for Chromium support. Do not upload your laptop's `node_modules` or force `platform: linux/amd64` on A1.
+An automatically assigned public IPv4 can change after stop/start. For stable DNS, allocate and associate **one Elastic IP** if your plan permits it; otherwise update both DNS records, Jenkins `DEPLOY_HOST`, and its verified known-hosts file whenever the address changes. Never assume Elastic IP is free: AWS lists $0.005 per public IPv4-hour, whether attached or idle (about $3.65 for 730 hours before applicable benefits/credits). [AWS public IPv4 pricing](https://aws.amazon.com/vpc/pricing/).
+
+These instructions use x86-64. If choosing T4g instead, choose an ARM64 Ubuntu AMI and build native ARM64 images on that instance. Never upload your laptop's `node_modules`. The same Docker templates build natively on either architecture.
 
 ## 5. Prepare Ubuntu
 
 On your computer, replace `VPS_IP` and the key path:
+
+Before accepting the first SSH connection, compare its host fingerprint with EC2 → select instance → Actions → Monitor and troubleshoot → Get system log. Find the matching SSH host-key fingerprint in that output. This is the server's identity, not your administrator key-pair fingerprint. [AWS host fingerprint instructions](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/connection-prereqs-general.html).
 
 ```sh
 ssh -i ~/.ssh/your_admin_key ubuntu@VPS_IP
@@ -87,7 +92,7 @@ docker compose version
 uname -m
 ```
 
-On A1, architecture should be `aarch64`. Check both the cloud firewall and Ubuntu's existing iptables/nftables/UFW configuration; OCI images may have their own rules. Preserve SSH and cloud metadata access. Permit 80/443 using the active firewall manager, then test from your computer. Docker-published ports can bypass UFW rules, so rely on the cloud perimeter plus publishing only intended ports. See [Docker firewall limitations](https://docs.docker.com/engine/install/ubuntu/#firewall-limitations).
+On the recommended x86 instance, architecture should be `x86_64` (`aarch64` for T4g). Check both the EC2 security group and Ubuntu's existing iptables/nftables/UFW configuration. Preserve SSH and cloud metadata access. Permit 80/443 using the active firewall manager, then test from your computer. Docker-published ports can bypass UFW rules, so rely on the cloud perimeter plus publishing only intended ports. See [Docker firewall limitations](https://docs.docker.com/engine/install/ubuntu/#firewall-limitations).
 
 ## 6. Create the deployment account
 
@@ -137,17 +142,19 @@ Caddy will obtain certificates when the application is deployed. A connection fa
 
 Follow [production secrets and services](deployment-jenkins.md#4-configure-production-secrets-on-the-vps): SeaweedFS stores live files privately on this VPS; an off-host S3 bucket stores encrypted backups and deletion tombstones. Retain encryption keys separately. A VPS snapshot alone does not replace the app's database/file-consistent recovery procedure.
 
-For email, choose a provider with SMTP submission and a suitable free allowance. Oracle currently lists 3,000 Email Delivery messages monthly among its Always Free resources; outbound port 25 is blocked by default. Use a supported submission endpoint/port and confirm limits in your tenancy. [Oracle email/network allowances](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm).
+Keep the guide's R2 backup destination unless you deliberately adapt the S3 configuration. Moving compute to AWS does not require moving object storage too. An Amazon S3 backup bucket is another option, but its IAM permissions, region and the current bucket-creation code path need review; do not simply replace the endpoint and assume compatibility.
 
-If choosing Oracle Email Delivery:
+For email, use a real authenticated SMTP provider. **Amazon SES is optional**, subject to account-plan availability, pricing and approval; do not assume EC2 credits include a permanent free email allowance.
 
-1. Open Email Delivery in the selected region and create an approved sender matching `EMAIL_FROM`.
-2. Configure the sending domain's SPF/DKIM records and DMARC.
-3. Generate SMTP credentials for a dedicated IAM user with the required email-delivery policy; these are not your console password.
-4. Copy the region's SMTP endpoint and submission settings shown in the console into `production.env`.
-5. Check account restrictions/approval and send a real OTP through the deployed app. Monitor delivery failures and monthly volume.
+If SES is available in your account:
 
-Use [Oracle's SMTP configuration instructions](https://docs.oracle.com/en-us/iaas/Content/Email/Tasks/configuresmtpconnection.htm) for the exact regional endpoint, IAM and TLS details. Do not guess the endpoint or open inbound SMTP ports on the VPS. Mailpit stays on your development computer.
+1. In SES, select a supported region and verify the sending domain for `no-reply@capybudget.bebem.my.id`. Add the provided DKIM records and configure SPF/DMARC as appropriate for the chosen MAIL FROM domain.
+2. Request production access in that region before allowing public signup. In the SES sandbox, recipient restrictions prevent sending OTPs to arbitrary new users. Approval is not automatic. [SES sandbox and production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
+3. Generate regional **SES SMTP credentials**. These differ from your AWS console password and ordinary AWS access keys. Copy the SMTP endpoint shown for that region. [SES SMTP credentials](https://docs.aws.amazon.com/ses/latest/dg/smtp-credentials.html).
+4. Set `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` and the verified `EMAIL_FROM`. Use the provider's supported TLS submission settings, typically port 587 with `SMTP_SECURE=false` for STARTTLS, or 465 with `SMTP_SECURE=true`.
+5. Confirm your plan can use SES, review its pricing/quotas, and test initial signup OTP, resend, reset-password and reminders through the email worker. If production access is unavailable, configure another SMTP provider before public signup.
+
+Do not open inbound SMTP ports or run your own mail server on EC2. Mailpit remains local testing infrastructure and does not deliver real external mail.
 
 ## 9. Deploy and prove recovery
 
@@ -159,16 +166,19 @@ Continue with [local Jenkins setup and first deployment](deployment-jenkins.md#6
 4. Configure independent uptime checks for both domains and alerts for backup/job failures. Jenkins cannot notify you when your computer is off unless you add an independent monitoring service.
 5. Record how to recreate the VPS from the repository, restore data, update DNS, and reconnect Jenkins. Store this runbook and secrets securely outside the VPS.
 
-## 10. Keep the setup within the free allowance
+## 10. Monitor credits and prepare for expiry
 
 | Item | What to monitor |
 | --- | --- |
-| Compute | Aggregate A1 CPU/RAM hours; other instances consume the same allowance |
-| Disk | Boot/block volume allocation, retained snapshots, Docker images, logs, database and receipt growth |
-| Object storage | Live/backup retention and operation counts; optional R2 overages are billable |
-| Email | Provider's monthly allowance and delivery limits |
-| Networking | Public IP, egress and any extra network service charges in the selected provider |
-| Availability | Capacity shortages and idle-instance reclamation; keep off-host recovery ready |
-| Domain | Existing domain renewal is separate from free hosting |
+| EC2 | Region-specific hourly cost and hours running; two instances consume the same credit pool faster |
+| EBS | Allocated disk, snapshots and retained volumes; these can continue costing money while EC2 is stopped |
+| Public IPv4 | Attached and idle address-hours, including Elastic IPs |
+| Network | Data transfer and accidental NAT Gateway/load balancer charges |
+| Object storage/email | Provider storage, requests and sending limits; external R2 costs are separate from AWS credits |
+| CPU credits | If choosing T3/T4g, review burst-credit mode and any surplus-credit charges |
+| Account plan | Credit balance, expiry date, and whether the account is Free or Paid |
+| Domain | Existing domain renewal is separate from hosting |
 
-Review costs after creation, after the trial ends, and monthly. Do not generate artificial load to evade idle-resource policies. If the app becomes important to paying users, budget for reliable paid hosting and tested recovery even if this free deployment is working well.
+Review Billing daily during the first week, then at least weekly. Set calendar reminders well before credit/plan expiry. A Free plan is time-limited; do not rely on the service remaining available after it ends. Upgrading to Paid changes the billing risk and should be a deliberate decision.
+
+Before ending the trial, download a verified off-host backup and retain the encryption keys, DNS settings and deployment runbook. Either move to another host or choose paid hosting. To stop using AWS, remove resources only after recovery is confirmed: terminate the instance, review retained EBS volumes/snapshots, release unused Elastic IPs, and inspect other regions/services for remaining resources. Stopping EC2 alone does not stop all costs. Never delete the only copy of your financial data or encryption keys.

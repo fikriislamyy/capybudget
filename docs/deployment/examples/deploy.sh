@@ -12,7 +12,7 @@ cd "$base/releases/$release"
 export APP_RELEASE="$release"
 compose=(docker compose --env-file "$base/secrets/production.env" -p capybudget -f docs/deployment/examples/compose.production.yml)
 "${compose[@]}" config --quiet
-# Building on the target machine produces native ARM64 images on Oracle A1.
+# Build native images on the target machine (x86-64 on the recommended EC2 host).
 "${compose[@]}" build api web backup
 "${compose[@]}" up -d --wait postgres redis object-storage
 if [[ "$mode" == first ]]; then

@@ -2910,9 +2910,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1790916233.8265834,
-    "seen": 1790916699.645593,
-    "ast_hash": "e1bf41114e10888d96ec03bd4ebdc636",
+    "mtime": 1790941094.1388774,
+    "seen": 1790941102.9588993,
+    "ast_hash": "00921056988ae973a80d615ff8d41f5b",
     "semantic_hash": ""
   },
   "apps/web/src/app.html": {
@@ -3399,6 +3399,42 @@
     "mtime": 1790929820.0195816,
     "seen": 1790929832.7341986,
     "ast_hash": "a1abdc2189bce9832e99eb6344ef63cc",
+    "semantic_hash": ""
+  },
+  "docs/deployment/examples/deploy.sh": {
+    "mtime": 1790940314.3077898,
+    "seen": 1790941102.9572291,
+    "ast_hash": "a784b5465c3622ac1d63241ac8218130",
+    "semantic_hash": ""
+  },
+  "docs/deployment-jenkins.md": {
+    "mtime": 1790940596.523109,
+    "seen": 1790941102.9589553,
+    "ast_hash": "48a15ff7465f39d9ba8df023be577cc6",
+    "semantic_hash": ""
+  },
+  "docs/deployment/examples/compose.jenkins.yml": {
+    "mtime": 1790940596.4230983,
+    "seen": 1790941102.9589565,
+    "ast_hash": "3d5f99c7dd89b4124368c90cc2f82d07",
+    "semantic_hash": ""
+  },
+  "docs/deployment/examples/compose.production.yml": {
+    "mtime": 1790940760.2311018,
+    "seen": 1790941102.958958,
+    "ast_hash": "8fbcaeb79f406acdbaad584a68aa735a",
+    "semantic_hash": ""
+  },
+  "docs/deployment/examples/dockerignore.txt": {
+    "mtime": 1790940314.2157857,
+    "seen": 1790941102.958959,
+    "ast_hash": "a067ff71afcb2f83329189b45f310189",
+    "semantic_hash": ""
+  },
+  "docs/free-vps-setup.md": {
+    "mtime": 1790940760.1099086,
+    "seen": 1790941102.95896,
+    "ast_hash": "1392cb83d62e9515bff19b63776143dd",
     "semantic_hash": ""
   }
 }
