@@ -20,7 +20,7 @@
 
   let { open, workspaceId, onClose, onSaved = () => {} }: { open: boolean; workspaceId: string; onClose: () => void; onSaved?: () => void } = $props();
   const authUi = getContext<AuthUiState>(AUTH_UI_CONTEXT);
-  const workspace=getContext<{optionsRevision:number}>('capybudget-workspaces');
+  const workspace=getContext<{optionsRevision:number;items:{id:string;currency:string}[]}>('capybudget-workspaces');
   const t = (key: Parameters<typeof uxText>[1]) => uxText(authUi.locale, key);
 
   let internalOpen = $state(false);
@@ -248,7 +248,7 @@
       {#if txType === 'transfer'}
         <p class="chips-label" id="quick-dest-label">{t('account')} →</p>
         <div class="chips" role="group" aria-labelledby="quick-dest-label">
-          {#each accounts.filter((a) => a.id !== accountId) as account (account.id)}
+          {#each accounts.filter((a) => a.id !== accountId && a.currency===sourceAccount?.currency) as account (account.id)}
             <Button variant="ghost" type="button" class={cn('', {"active": destinationAccountId === account.id})} onclick={() => (destinationAccountId = account.id)} aria-pressed={destinationAccountId === account.id}>
               <span class="avatar" aria-hidden="true">{account.name.slice(0, 1).toUpperCase()}</span>{account.name}
             </Button>

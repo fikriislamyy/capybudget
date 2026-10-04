@@ -65,7 +65,7 @@ async function budgetRows(tx: TransactionSql, workspaceId: string, now = new Dat
   const today = workspaceToday(workspace.timezone, now);
   const rows = await q(tx, `select b.id,b.name,b.category_id as "categoryId",c.name as "categoryName",b.cadence,b.amount::text,b.currency,
       b.alert_thresholds as "alertThresholds",p.starts_on as "periodStart",p.ends_on as "periodEnd",
-      coalesce((select sum(t.amount) from transactions t where t.workspace_id=b.workspace_id and t.deleted_at is null and t.type='expense' and t.currency=b.currency
+      coalesce((select sum(t.amount) from tracking_allocations t where t.workspace_id=b.workspace_id and t.deleted_at is null and t.type='expense' and t.currency=b.currency
         and t.occurred_at>=p.starts_on and t.occurred_at<p.ends_on and t.category_id in
         (with recursive descendants(id) as (select b.category_id union all select c2.id from categories c2 join descendants d on c2.parent_id=d.id where c2.workspace_id=b.workspace_id)
          select id from descendants)),0)::text as spent

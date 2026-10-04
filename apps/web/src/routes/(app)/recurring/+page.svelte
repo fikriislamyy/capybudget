@@ -21,7 +21,7 @@
   import { trackingText } from '$lib/i18n/tracking';
   import { uxText } from '$lib/i18n/ux';
 
-  type State={selectedId:string;ready:boolean};
+  type State={selectedId:string;ready:boolean;items:{id:string;currency:string}[]};
   type Account={id:string;name:string;currency?:string};type Category={id:string;name:string;type:string};
   type Rule={id:string;name:string;type:string;accountId:string;destinationAccountId?:string;categoryId?:string;amount:string;frequency:string;interval:number;anchorDate:string;endDate?:string|null;nextDueDate:string;mode:string;status:string;version:number};
   type Occurrence={id:string;ruleName:string;date:string;status:string;amount:string;currency:string};
@@ -44,7 +44,7 @@
       const url=editingRule?`/api/workspaces/${workspace.selectedId}/recurring-rules/${editingRule.id}`:`/api/workspaces/${workspace.selectedId}/recurring-rules`;
       const r=await fetch(url,{method:editingRule?'PATCH':'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...payload,...(editingRule?{version:editingRule.version}:{})})});const j=await r.json();if(!r.ok)throw new Error(j.message??t('unableSaveRule'));name='';amount='';endDate='';editingRule=null;notice=t('ruleSaved');reload++;
     }catch(e){error=e instanceof Error?e.message:t('unableCreateRule');}finally{busy=false;}}
-  async function action(item:Occurrence,verb:'confirm'|'skip'){error='';try{const r=await fetch(`/api/workspaces/${workspace.selectedId}/recurring-occurrences/${item.id}/${verb}`,{method:'POST'});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message??t('unableOcc'));notice=verb==='confirm'?t('occRecorded'):t('occSkipped');reload++;}catch(e){error=e instanceof Error?e.message:t('unableOcc');}}
+  async function action(item:Occurrence,verb:'confirm'|'skip'){error='';try{const r=await fetch(`/api/workspaces/${workspace.selectedId}/recurring-occurrences/${item.id}/${verb}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message??t('unableOcc'));notice=verb==='confirm'?t('occRecorded'):t('occSkipped');reload++;}catch(e){error=e instanceof Error?e.message:t('unableOcc');}}
   async function ruleAction(rule:Rule,status:'paused'|'active'){try{const r=await fetch(`/api/workspaces/${workspace.selectedId}/recurring-rules/${rule.id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({status,version:rule.version})});const j=await r.json();if(!r.ok)throw new Error(j.message??t('unableRule'));notice=t('ruleUpdated');reload++;}catch(e){error=e instanceof Error?e.message:t('unableRule');}}
   async function confirmArchive(){
     const rule=archiveTarget;if(!rule)return;

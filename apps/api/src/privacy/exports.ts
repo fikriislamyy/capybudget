@@ -105,7 +105,7 @@ export async function runPrivacyExport(id: string) {
               await write(table + ".jsonl", exported);
               count++;
               if (
-                ((table === "attachments" && row.status === "ready") ||
+                ((table === "import_jobs" && row.status !== "expired") || (table === "ocr_jobs" && row.status !== "expired" && !row.transaction_id) || (table === "attachments" && row.status === "ready") ||
                   (table === "business_documents" && row.state === "ready") ||
                   (table === "report_exports" && row.status === "ready")) &&
                 row.object_key

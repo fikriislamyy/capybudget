@@ -31,12 +31,12 @@ function dateSeries(from:string,toExclusive:string){const out:string[]=[];for(le
 async function buildData(tx:TransactionSql,workspaceId:string,workspace:JsonRow,preset:ReportPreset,currency:string,details:boolean){
  const period=resolveReportPeriod(preset,workspace.timezone),flags:string[]=[];
  if(currency!==workspace.currency)flags.push('requested_currency_differs_from_workspace');
- const accountRows:JsonRow[]=await q(tx,`select a.id,a.name,a.kind,a.currency,a.archived_at as "archivedAt",
- coalesce(sum(jl.debit-jl.credit) filter(where je.effective_date<$2::date),0)::text as balance
+ const accountRows:JsonRow[]=await q(tx,`select a.id,a.name,a.kind,a.currency as "nativeCurrency",case when $3=$4 then $3 else a.currency end as currency,a.archived_at as "archivedAt",
+ coalesce(sum(case when $3=$4 then coalesce(jl.base_debit,jl.debit)-coalesce(jl.base_credit,jl.credit) else jl.debit-jl.credit end) filter(where je.effective_date<$2::date),0)::text as balance
  from accounts a left join journal_lines jl on jl.workspace_id=a.workspace_id and jl.ledger_account_id=a.ledger_account_id
  left join journal_entries je on je.workspace_id=jl.workspace_id and je.id=jl.entry_id
  where a.workspace_id=$1 and a.deleted_at is null and a.kind in ('cash','bank','e_wallet','savings')
- group by a.id order by a.created_at,a.id`,[workspaceId,period.toExclusive]);
+ group by a.id order by a.created_at,a.id`,[workspaceId,period.toExclusive,currency,workspace.currency]);
  const matchingAccounts=accountRows.filter(a=>a.currency===currency),excludedAccounts=accountRows.filter(a=>a.currency!==currency);
  if(excludedAccounts.length)flags.push('other_currency_accounts_excluded');
  const accountTotal=matchingAccounts.reduce((s,a)=>s+toUnits(amount(a.balance),true),0n);
@@ -45,21 +45,21 @@ async function buildData(tx:TransactionSql,workspaceId:string,workspace:JsonRow,
 
  const transactionTotals=await q(tx,`select coalesce(sum(amount) filter(where type='income'),0)::text as income,
  coalesce(sum(amount) filter(where type='expense'),0)::text as expense,count(*)::int as count
- from transactions where workspace_id=$1 and deleted_at is null and currency=$2 and type in ('income','expense')
+ from tracking_valuations where workspace_id=$1 and deleted_at is null and currency=$2 and type in ('income','expense')
  and occurred_at >= $3::date and occurred_at < $4::date`,[workspaceId,currency,period.from,period.toExclusive]);
  const totals=transactionTotals[0]??{income:'0',expense:'0',count:0};
  const categoryRows:JsonRow[]=await q(tx,`select c.id as "categoryId",c.name as "categoryName",coalesce(sum(t.amount),0)::text as amount,count(t.id)::int as count
- from transactions t left join categories c on c.workspace_id=t.workspace_id and c.id=t.category_id
+ from tracking_allocations t left join categories c on c.workspace_id=t.workspace_id and c.id=t.category_id
  where t.workspace_id=$1 and t.deleted_at is null and t.currency=$2 and t.type='expense'
  and t.occurred_at >= $3::date and t.occurred_at < $4::date group by c.id,c.name order by sum(t.amount) desc nulls last,c.name limit 500`,[workspaceId,currency,period.from,period.toExclusive]);
  const dailyRows:JsonRow[]=await q(tx,`select occurred_at as date,coalesce(sum(amount) filter(where type='income'),0)::text as income,
- coalesce(sum(amount) filter(where type='expense'),0)::text as expense from transactions
+ coalesce(sum(amount) filter(where type='expense'),0)::text as expense from tracking_valuations
  where workspace_id=$1 and deleted_at is null and currency=$2 and type in ('income','expense') and occurred_at >= $3::date and occurred_at < $4::date group by occurred_at order by occurred_at`,[workspaceId,currency,period.from,period.toExclusive]);
  const byDay=new Map(dailyRows.map(r=>[String(r.date),r]));
  let series=dateSeries(period.from,period.toExclusive).map(date=>{const r=byDay.get(date);return {date,income:amount(r?.income),expense:amount(r?.expense),net:fromUnits(toUnits(amount(r?.income))-toUnits(amount(r?.expense))),cashBalance:'0.0000'};});
 
  const budgets:JsonRow[]=await q(tx,`select b.id,p.name,b.cadence,p.amount::text as planned,b.currency,b.category_id as "categoryId",c.name as "categoryName",
- p.revision,p.legacy_baseline as "legacyBaseline",coalesce((select sum(t.amount) from transactions t where t.workspace_id=b.workspace_id and t.deleted_at is null and t.type='expense' and t.currency=b.currency and t.occurred_at >= p.period_start and t.occurred_at < p.period_end and t.category_id in (
+ p.revision,p.legacy_baseline as "legacyBaseline",coalesce((select sum(t.amount) from tracking_allocations t where t.workspace_id=b.workspace_id and t.deleted_at is null and t.type='expense' and t.currency=b.currency and t.occurred_at >= p.period_start and t.occurred_at < p.period_end and t.category_id in (
    with recursive descendants(id) as (select b.category_id union all select child.id from categories child join descendants d on child.parent_id=d.id where child.workspace_id=b.workspace_id) select id from descendants)),0)::text as actual,
  p.period_start as "periodStart",p.period_end as "periodEnd"
  from budgets b join categories c on c.workspace_id=b.workspace_id and c.id=b.category_id
@@ -84,26 +84,26 @@ async function buildData(tx:TransactionSql,workspaceId:string,workspace:JsonRow,
  const bills=occurrenceRows.map(b=>({...b,overdue:String(b.dueOn)<period.today}));
 
  let activity:JsonRow[]=[];
- if(details){const [count]=await q(tx,`select count(*)::int as count from transactions where workspace_id=$1 and deleted_at is null and currency=$2 and type in ('income','expense','transfer') and occurred_at >= $3::date and occurred_at < $4::date`,[workspaceId,currency,period.from,period.toExclusive]);if(Number(count.count)>50000)throw Object.assign(new Error('This period contains too many transactions for one export. Choose a shorter preset or account scope.'),{status:413,code:'REPORT_TOO_LARGE'});
+ if(details){const [count]=await q(tx,`select count(*)::int as count from tracking_valuations where workspace_id=$1 and deleted_at is null and currency=$2 and type in ('income','expense','transfer') and occurred_at >= $3::date and occurred_at < $4::date`,[workspaceId,currency,period.from,period.toExclusive]);if(Number(count.count)>50000)throw Object.assign(new Error('This period contains too many transactions for one export. Choose a shorter preset or account scope.'),{status:413,code:'REPORT_TOO_LARGE'});
   activity=await q(tx,`select t.id,t.type,t.occurred_at as date,t.amount::text,t.currency,t.merchant,t.notes,t.account_id as "accountId",a.name as "accountName",c.name as "categoryName"
-   from transactions t join accounts a on a.workspace_id=t.workspace_id and a.id=t.account_id left join categories c on c.workspace_id=t.workspace_id and c.id=t.category_id
+   from tracking_valuations t join accounts a on a.workspace_id=t.workspace_id and a.id=t.account_id left join categories c on c.workspace_id=t.workspace_id and c.id=t.category_id
    where t.workspace_id=$1 and t.deleted_at is null and t.currency=$2 and t.type in ('income','expense','transfer') and t.occurred_at >= $3::date and t.occurred_at < $4::date order by t.occurred_at,t.id limit 50001`,[workspaceId,currency,period.from,period.toExclusive]);}
 
  const movementRows:JsonRow[]=await q(tx,`select je.id as "entryId",je.transaction_id as "transactionId",je.effective_date as date,je.reason,
  t.type as "transactionType",t.category_id as "categoryId",c.name as "categoryName",coalesce(m.activity,'unclassified') as activity,
- coalesce(sum(jl.debit-jl.credit),0)::text as amount
+ coalesce(sum(case when $2=(select currency from workspaces where id=$1) then coalesce(jl.base_debit,jl.debit)-coalesce(jl.base_credit,jl.credit) else jl.debit-jl.credit end),0)::text as amount
  from journal_entries je join journal_lines jl on jl.workspace_id=je.workspace_id and jl.entry_id=je.id
  join accounts a on a.workspace_id=jl.workspace_id and a.ledger_account_id=jl.ledger_account_id
  left join transactions t on t.workspace_id=je.workspace_id and t.id=je.transaction_id
  left join categories c on c.workspace_id=t.workspace_id and c.id=t.category_id
  left join cashflow_category_mappings m on m.workspace_id=c.workspace_id and m.category_id=c.id
- where je.workspace_id=$1 and a.kind in ('cash','bank','e_wallet','savings') and a.currency=$2 and je.effective_date >= $3::date and je.effective_date < $4::date
+ where je.workspace_id=$1 and a.kind in ('cash','bank','e_wallet','savings') and (a.currency=$2 or $2=(select currency from workspaces where id=$1)) and je.effective_date >= $3::date and je.effective_date < $4::date
  group by je.id,je.transaction_id,je.effective_date,je.reason,t.type,t.category_id,c.name,m.activity order by je.effective_date,je.id`,[workspaceId,currency,period.from,period.toExclusive]);
  const cashflowRows:JsonRow[]=[];const sums=new Map<string,bigint>();let boundary=0n,openingAdjustments=0n,unclassified=0n;
  for(const row of movementRows){const movement=toUnits(amount(row.amount),true);let activity=String(row.activity);if(row.reason==='opening'){activity='opening_adjustment';openingAdjustments+=movement;}else if(row.transactionType==='transfer'){if(movement===0n)continue;activity='boundary_transfer';boundary+=movement;}else if(!row.transactionId){activity='unclassified';unclassified+=movement;}else if(activity==='unclassified')unclassified+=movement;
    sums.set(activity,(sums.get(activity)??0n)+movement);cashflowRows.push({...row,amount:fromUnits(movement),activity});}
- const openingResult=await q(tx,`select coalesce(sum(jl.debit-jl.credit),0)::text as opening from accounts a join journal_lines jl on jl.workspace_id=a.workspace_id and jl.ledger_account_id=a.ledger_account_id join journal_entries je on je.workspace_id=jl.workspace_id and je.id=jl.entry_id where a.workspace_id=$1 and a.kind in ('cash','bank','e_wallet','savings') and a.currency=$2 and je.effective_date<$3::date`,[workspaceId,currency,period.from]);
- const closingResult=await q(tx,`select coalesce(sum(jl.debit-jl.credit),0)::text as closing from accounts a join journal_lines jl on jl.workspace_id=a.workspace_id and jl.ledger_account_id=a.ledger_account_id join journal_entries je on je.workspace_id=jl.workspace_id and je.id=jl.entry_id where a.workspace_id=$1 and a.kind in ('cash','bank','e_wallet','savings') and a.currency=$2 and je.effective_date<$3::date`,[workspaceId,currency,period.toExclusive]);
+ const openingResult=await q(tx,`select coalesce(sum(case when $2=(select currency from workspaces where id=$1) then coalesce(jl.base_debit,jl.debit)-coalesce(jl.base_credit,jl.credit) else jl.debit-jl.credit end),0)::text as opening from accounts a join journal_lines jl on jl.workspace_id=a.workspace_id and jl.ledger_account_id=a.ledger_account_id join journal_entries je on je.workspace_id=jl.workspace_id and je.id=jl.entry_id where a.workspace_id=$1 and a.kind in ('cash','bank','e_wallet','savings') and (a.currency=$2 or $2=(select currency from workspaces where id=$1)) and je.effective_date<$3::date`,[workspaceId,currency,period.from]);
+ const closingResult=await q(tx,`select coalesce(sum(case when $2=(select currency from workspaces where id=$1) then coalesce(jl.base_debit,jl.debit)-coalesce(jl.base_credit,jl.credit) else jl.debit-jl.credit end),0)::text as closing from accounts a join journal_lines jl on jl.workspace_id=a.workspace_id and jl.ledger_account_id=a.ledger_account_id join journal_entries je on je.workspace_id=jl.workspace_id and je.id=jl.entry_id where a.workspace_id=$1 and a.kind in ('cash','bank','e_wallet','savings') and (a.currency=$2 or $2=(select currency from workspaces where id=$1)) and je.effective_date<$3::date`,[workspaceId,currency,period.toExclusive]);
  const opening=toUnits(amount(openingResult[0]?.opening),true),closing=toUnits(amount(closingResult[0]?.closing),true),cashflow=[...sums].map(([activity,value])=>({activity,net:fromUnits(value)}));
  const dailyCashMovement=new Map<string,bigint>();for(const row of movementRows){const date=String(row.date).slice(0,10);dailyCashMovement.set(date,(dailyCashMovement.get(date)??0n)+toUnits(amount(row.amount),true));}let runningCash=opening;series=series.map(row=>{runningCash+=dailyCashMovement.get(row.date)??0n;return {...row,cashBalance:fromUnits(runningCash)};});
  const cashflowNet=[...sums.values()].reduce((s,v)=>s+v,0n);const reconciliation=opening+cashflowNet;

@@ -141,6 +141,9 @@ export const transactions = pgTable('transactions', {
   notes: text('notes'),
   merchant: text('merchant'),
   amount: numeric('amount', { precision: 19, scale: 4 }).notNull(),
+  baseAmount: numeric('base_amount', {precision:19,scale:4}),
+  baseCurrency: varchar('base_currency',{length:3}),
+  destinationAmount: numeric('destination_amount',{precision:19,scale:4}),
   currency: varchar('currency', { length: 3 }).notNull().default('IDR'),
   type: text('type', { enum: ['income', 'expense', 'transfer'] }).notNull(),
   occurredAt: date('occurred_at').notNull(),
@@ -175,7 +178,9 @@ export const journalLines = pgTable('journal_lines', {
   ledgerAccountId: uuid('ledger_account_id').notNull(),
   debit: numeric('debit', { precision: 19, scale: 4 }).notNull().default('0'),
   credit: numeric('credit', { precision: 19, scale: 4 }).notNull().default('0'),
-  currency: varchar('currency', { length: 3 }).notNull()
+  currency: varchar('currency', { length: 3 }).notNull(),
+  baseDebit: numeric('base_debit',{precision:19,scale:4}),
+  baseCredit: numeric('base_credit',{precision:19,scale:4})
 }, (table) => [index('journal_lines_balance_idx').on(table.workspaceId, table.ledgerAccountId, table.entryId)]);
 
 export const transactionAudit = pgTable('audit_logs', {
@@ -541,3 +546,31 @@ export const onboardingState = pgTable('onboarding_state', {
  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
  updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow()
 });
+
+
+// Core tracking V2. Cross-row ledger and split invariants are enforced by migration 0027.
+const captureIdentity = () => ({id:uuid('id').defaultRandom().primaryKey(),workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id)});
+export const exchangeRates=pgTable('exchange_rates',{
+ id:uuid('id').defaultRandom().primaryKey(),sourceCurrency:varchar('source_currency',{length:3}).notNull(),baseCurrency:varchar('base_currency',{length:3}).notNull(),
+ rateDate:date('rate_date').notNull(),rate:numeric('rate',{precision:28,scale:12}).notNull(),provider:text('provider').notNull(),fetchedAt:timestamp('fetched_at',{withTimezone:true}).notNull().defaultNow()
+},t=>[uniqueIndex('exchange_rates_observation_unique').on(t.sourceCurrency,t.baseCurrency,t.rateDate,t.provider,t.rate)]);
+export const transactionFxSnapshots=pgTable('transaction_fx_snapshots',{
+ ...captureIdentity(),transactionId:uuid('transaction_id').notNull(),revision:integer('revision').notNull(),sourceCurrency:varchar('source_currency',{length:3}).notNull(),baseCurrency:varchar('base_currency',{length:3}).notNull(),
+ sourceAmount:numeric('source_amount',{precision:19,scale:4}).notNull(),baseAmount:numeric('base_amount',{precision:19,scale:4}).notNull(),rate:numeric('rate',{precision:28,scale:12}).notNull(),rateDate:date('rate_date').notNull(),provider:text('provider').notNull(),
+ feeTransactionId:uuid('fee_transaction_id'),actualTransferRate:numeric('actual_transfer_rate',{precision:28,scale:12}),roundingAdjustment:numeric('rounding_adjustment',{precision:28,scale:12}),destinationCurrency:varchar('destination_currency',{length:3}),destinationAmount:numeric('destination_amount',{precision:19,scale:4}),destinationBaseAmount:numeric('destination_base_amount',{precision:19,scale:4}),destinationRate:numeric('destination_rate',{precision:28,scale:12}),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()
+},t=>[uniqueIndex('transaction_fx_revision_unique').on(t.workspaceId,t.transactionId,t.revision),foreignKey({columns:[t.workspaceId,t.transactionId],foreignColumns:[transactions.workspaceId,transactions.id]}),foreignKey({name:'transaction_fx_fee_fk',columns:[t.workspaceId,t.feeTransactionId],foreignColumns:[transactions.workspaceId,transactions.id]})]);
+export const transactionSplits=pgTable('transaction_splits',{
+ ...captureIdentity(),transactionId:uuid('transaction_id').notNull(),categoryId:uuid('category_id').notNull(),amount:numeric('amount',{precision:19,scale:4}).notNull(),baseAmount:numeric('base_amount',{precision:19,scale:4}).notNull(),notes:text('notes'),position:integer('position').notNull()
+},t=>[uniqueIndex('transaction_split_position_unique').on(t.workspaceId,t.transactionId,t.position),foreignKey({columns:[t.workspaceId,t.transactionId],foreignColumns:[transactions.workspaceId,transactions.id]}),foreignKey({columns:[t.workspaceId,t.categoryId],foreignColumns:[categories.workspaceId,categories.id]})]);
+export const bulkOperations=pgTable('bulk_operations',{
+ ...captureIdentity(),actorUserId:text('actor_user_id').notNull().references(()=>user.id),action:text('action').notNull(),request:jsonb('request').notNull(),requestHash:text('request_hash').notNull(),status:text('status').notNull().default('preview'),result:jsonb('result'),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),appliedAt:timestamp('applied_at',{withTimezone:true})
+});
+export const importJobs=pgTable('import_jobs',{
+ ...captureIdentity(),actorUserId:text('actor_user_id').notNull().references(()=>user.id),accountId:uuid('account_id').notNull(),sourceKind:text('source_kind').notNull(),objectKey:text('object_key'),checksum:text('checksum'),fileName:text('file_name').notNull(),mapping:jsonb('mapping'),parserVersion:text('parser_version').notNull().default('tracking-v2-1'),status:text('status').notNull().default('uploaded'),error:text('error'),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '7 days'`)
+},t=>[uniqueIndex('import_jobs_workspace_id_unique').on(t.workspaceId,t.id),foreignKey({columns:[t.workspaceId,t.accountId],foreignColumns:[accounts.workspaceId,accounts.id]})]);
+export const importRows=pgTable('import_rows',{
+ ...captureIdentity(),jobId:uuid('job_id').notNull(),rowNumber:integer('row_number').notNull(),raw:jsonb('raw'),normalized:jsonb('normalized'),fingerprint:text('fingerprint'),status:text('status').notNull().default('review'),error:text('error'),transactionId:uuid('transaction_id')
+},t=>[uniqueIndex('import_row_number_unique').on(t.workspaceId,t.jobId,t.rowNumber),index('import_review_idx').on(t.workspaceId,t.jobId,t.rowNumber),foreignKey({columns:[t.workspaceId,t.jobId],foreignColumns:[importJobs.workspaceId,importJobs.id]}),foreignKey({columns:[t.workspaceId,t.transactionId],foreignColumns:[transactions.workspaceId,transactions.id]})]);
+export const ocrJobs=pgTable('ocr_jobs',{
+ ...captureIdentity(),actorUserId:text('actor_user_id').notNull().references(()=>user.id),objectKey:text('object_key').notNull(),mimeType:text('mime_type').notNull(),fileName:text('file_name').notNull(),checksum:text('checksum').notNull(),sizeBytes:integer('size_bytes').notNull(),status:text('status').notNull().default('queued'),extracted:jsonb('extracted'),error:text('error'),transactionId:uuid('transaction_id'),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull().default(sql`now()+interval '7 days'`)
+},t=>[foreignKey({columns:[t.workspaceId,t.transactionId],foreignColumns:[transactions.workspaceId,transactions.id]})]);

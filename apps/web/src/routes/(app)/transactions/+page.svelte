@@ -1,4 +1,6 @@
 <script lang="ts">
+  import BulkActions from '$lib/components/tracking/bulk-actions.svelte';
+  import {Checkbox} from '$lib/components/ui/checkbox';
   import { formatDate } from '$lib/dates';
   import AmountInput from '$lib/components/forms/amount-input.svelte';
   import LoadingScope from '$lib/components/shared/loading-scope.svelte';
@@ -7,7 +9,7 @@
   import {getContext as privacyContext} from 'svelte';
   import {concealed,PRIVACY_CONTEXT,type PrivacyState} from '$lib/privacy';
   const privacy=privacyContext<PrivacyState>(PRIVACY_CONTEXT);
-  import { parseLocalizedAmount } from '$lib/ux/amount';
+  import { parseLocalizedAmount, formatExactAmount } from '$lib/ux/amount';
   import { getContext } from 'svelte';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -34,7 +36,7 @@
   type Category={id:string;name:string;type:string};
   type Tag={id:string;name:string};
   type Attachment={id:string;name:string;mimeType:string};
-  type Tx={id:string;accountId:string;destinationAccountId?:string;categoryId?:string;type:string;accountName:string;destinationAccountName?:string;categoryName?:string;amount:string;currency:string;date:string;notes?:string;merchant?:string;version:number;tags:Tag[];attachments?:Attachment[]};
+  type Tx={id:string;accountId:string;destinationAccountId?:string;categoryId?:string;type:string;accountName:string;destinationAccountName?:string;categoryName?:string;amount:string;currency:string;date:string;notes?:string;merchant?:string;version:number;splits?:{categoryId:string;amount:string;notes?:string}[];destinationAmount?:string;baseAmount?:string;baseCurrency?:string;fx?:{rate:string;provider:string;date:string};tags:Tag[];attachments?:Attachment[]};
   const workspace=getContext<State>('capybudget-workspaces');
   const authUi=getContext<AuthUiState>(AUTH_UI_CONTEXT);const t=(key:Parameters<typeof trackingText>[1])=>trackingText(authUi.locale,key);
   const ux=(key:Parameters<typeof uxText>[1])=>uxText(authUi.locale,key);
@@ -44,11 +46,18 @@
   let refresh=$state(0),timer:ReturnType<typeof setTimeout>,previousWorkspace='',requestSequence=0;
   let categorySuggestion=$state<{categoryId:string;categoryName:string;source:string;reason:string}|null>(null),suggestionSequence=0;
   let formOpen=$state(false),filtersOpen=$state(false),deleteTarget=$state<Tx|null>(null),savedFlash=$state(false);
+  let selected=$state<string[]>([]),splitEnabled=$state(false),splits=$state<{categoryId:string;amount:string;notes?:string}[]>([]),destinationAmount=$state(''),feeAmount=$state(''),feeCategoryId=$state('');
+  const splitRemaining=$derived.by(()=>{
+    const units=(value:string)=>{if(!/^\d{1,15}(\.\d{0,4})?$/.test(value))return 0n;const [whole,fraction='']=value.split('.');return BigInt(whole)*10000n+BigInt(fraction.padEnd(4,'0'));};
+    const remaining=units(amount)-splits.reduce((sum,part)=>sum+units(part.amount),0n);
+    const absolute=remaining<0n?-remaining:remaining;
+    return (remaining<0n?'-':'')+(absolute/10000n).toString()+'.'+(absolute%10000n).toString().padStart(4,'0');
+  });
   let pendingPayload = '', pendingKey = '';
   let fType=$state(''),fFrom=$state(''),fTo=$state(''),fSort=$state('date'),fAccount=$state(''),fCategory=$state(''),fTag=$state(''),fMin=$state(''),fMax=$state('');
   $effect(()=>{void (workspace as {revision?:number}).revision;const id=workspace.selectedId,type=txType,merchantValue=merchant;if(!id||!merchantValue.trim()||!['income','expense'].includes(type)){categorySuggestion=null;return;}const sequence=++suggestionSequence;const delay=setTimeout(async()=>{try{const response=await fetch(`/api/workspaces/${id}/assistant/categorize`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,merchant:merchantValue,selectedCategoryId:categoryId||null})});const body=await response.json();if(sequence===suggestionSequence)categorySuggestion=body.suggestion??null;}catch{if(sequence===suggestionSequence)categorySuggestion=null;}},250);return()=>clearTimeout(delay);});
   function today(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta'}).format(new Date());}
-  $effect(()=>{void (workspace as {revision?:number}).revision;const id=workspace.selectedId;const key=refresh;if(id&&previousWorkspace&&id!==previousWorkspace){accountId='';destinationAccountId='';categoryId='';tagIds=[];accountFilter='';categoryFilter='';tagFilter='';cursor='';items=[];editing=null;}if(id)previousWorkspace=id;const filters={search:appliedQuery,kind:typeFilter,start:from,end:to,order:sort,account:accountFilter,category:categoryFilter,tag:tagFilter,min:minAmount,max:maxAmount,after:cursor};if(id)void load(id,filters);});
+  $effect(()=>{void (workspace as {revision?:number}).revision;const id=workspace.selectedId;const key=refresh;if(id&&previousWorkspace&&id!==previousWorkspace){accountId='';destinationAccountId='';categoryId='';tagIds=[];accountFilter='';categoryFilter='';tagFilter='';cursor='';items=[];editing=null;formOpen=false;splitEnabled=false;splits=[];feeAmount='';}if(id)previousWorkspace=id;const filters={search:appliedQuery,kind:typeFilter,start:from,end:to,order:sort,account:accountFilter,category:categoryFilter,tag:tagFilter,min:minAmount,max:maxAmount,after:cursor};if(id)void load(id,filters);});
   type Filters={search:string;kind:string;start:string;end:string;order:string;account:string;category:string;tag:string;min:string;max:string;after:string};
   async function load(id:string,filters:Filters){
     const sequence=++requestSequence;loading=true;error='';
@@ -83,14 +92,15 @@
   });
   function openNew(){
     if(editing||savedFlash){amount='';notes='';merchant='';tagIds=[];date=today();categoryId='';destinationAccountId='';pendingPayload='';pendingKey='';}
-    editing=null;savedFlash=false;error='';formOpen=true;
+    editing=null;savedFlash=false;error='';formOpen=true;splitEnabled=false;splits=[];destinationAmount='';feeAmount='';feeCategoryId='';
   }
   async function create(event:SubmitEvent){
     event.preventDefault();if(busy||!workspace.selectedId)return;busy=true;error='';notice='';
     const normalized=parseLocalizedAmount(amount,'en');
     if(!normalized){error=authUi.locale==='id'?'Masukkan jumlah yang valid.':'Enter a valid amount.';busy=false;return;}
     const payload:any={type:txType,accountId,amount:normalized,date,notes,merchant,tagIds};
-    if(txType==='transfer')payload.destinationAccountId=destinationAccountId;else payload.categoryId=categoryId;
+    if(txType==='transfer'){payload.destinationAccountId=destinationAccountId;payload.destinationAmount=destinationAmount;payload.feeAmount=feeAmount||undefined;payload.feeCategoryId=feeCategoryId||undefined;}
+    else if(splitEnabled)payload.splits=splits;else payload.categoryId=categoryId;
     try{
       const target=editing?'/api/workspaces/'+workspace.selectedId+'/transactions/'+editing.id+'?version='+editing.version:'/api/workspaces/'+workspace.selectedId+'/transactions';
       const fingerprint=JSON.stringify(payload);
@@ -98,7 +108,7 @@
       const response=await fetch(target,{method:editing?'PATCH':'POST',headers:{'content-type':'application/json',...(editing?{}:{'idempotency-key':pendingKey})},body:fingerprint});
       const result=await response.json();if(!response.ok)throw new Error(result.message??t('unableSave'));
       pendingPayload='';pendingKey='';
-      amount='';notes='';merchant='';tagIds=[];date=today();
+      amount='';notes='';merchant='';tagIds=[];date=today();splits=splits.map(part=>({...part,amount:''}));feeAmount='';destinationAmount='';
       if(editing){editing=null;notice=t('txSaved');formOpen=false;}
       else{savedFlash=true;notice=t('txSaved');}
       refresh++;
@@ -112,7 +122,7 @@
     catch(e){error=e instanceof Error?e.message:t('unableDelete');}
     finally{deleteTarget=null;}
   }
-  function edit(item:Tx){editing=item;txType=item.type;accountId=item.accountId;destinationAccountId=item.destinationAccountId??'';categoryId=item.categoryId??'';amount=item.amount;date=item.date;notes=item.notes??'';merchant=item.merchant??'';tagIds=item.tags.map(x=>x.id);savedFlash=false;error='';formOpen=true;}
+  function edit(item:Tx){editing=item;splitEnabled=!!item.splits?.length;splits=item.splits?.map(x=>({...x}))??[];destinationAmount=item.destinationAmount??'';feeAmount='';feeCategoryId='';txType=item.type;accountId=item.accountId;destinationAccountId=item.destinationAccountId??'';categoryId=item.categoryId??'';amount=item.amount;date=item.date;notes=item.notes??'';merchant=item.merchant??'';tagIds=item.tags.map(x=>x.id);savedFlash=false;error='';formOpen=true;}
   async function restore(item:Tx){try{const r=await fetch(`/api/workspaces/${workspace.selectedId}/transactions/${item.id}/restore`,{method:'POST'});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message??t('unableRestore'));notice=t('txRestored');refresh++;}catch(e){error=e instanceof Error?e.message:t('unableRestore');}}
   async function uploadAttachment(item:Tx,event:Event){const input=event.currentTarget as HTMLInputElement,file=input.files?.[0];if(!file)return;error='';try{const r=await fetch(`/api/workspaces/${workspace.selectedId}/transactions/${item.id}/attachments?name=${encodeURIComponent(file.name)}`,{method:'POST',headers:{'content-type':file.type},body:file});const j=await r.json();if(!r.ok)throw new Error(j.message??t('unableReceipt'));notice=t('receiptAttached');refresh++;}catch(e){error=e instanceof Error?e.message:t('unableReceipt');}finally{input.value='';}}
   async function removeAttachment(id:string){try{const r=await fetch(`/api/workspaces/${workspace.selectedId}/attachments/${id}`,{method:'DELETE'});if(!r.ok)throw new Error(t('removeReceipt'));refresh++;}catch(e){error=e instanceof Error?e.message:t('removeReceipt');}}
@@ -137,6 +147,7 @@
       <li><Button variant="ghost" type="button" class="clear" onclick={clearFilters}>{t('clearFilters')}</Button></li>
     </ul>
   {/if}
+<BulkActions workspaceId={workspace.selectedId} {items} {categories} {tags} bind:selected onUpdated={()=>refresh++}/>
   <Card.Root class="history">
     <Card.Header><Card.Title>{t('history')}</Card.Title></Card.Header>
     <Card.Content>
@@ -147,10 +158,12 @@
           {#each items as item (item.id)}
           <li>
             <article class="row">
+              <span class="select-transaction"><Checkbox checked={selected.includes(item.id)} aria-label={`${authUi.locale==='id'?'Pilih':'Select'} ${item.merchant||item.notes||item.type}`} onCheckedChange={(v)=>{if(v&&selected.length<100)selected=[...selected,item.id];else selected=selected.filter(x=>x!==item.id);}}/></span>
               <span class="type-icon" class:income={item.type==='income'} class:expense={item.type==='expense'} aria-hidden="true">{item.type==='income'?'↗':item.type==='expense'?'↘':'↔'}</span>
               <div class="description">
                 <strong>{item.merchant||item.notes||item.type}</strong>
-                <small>{item.type==='transfer'?item.accountName+' → '+item.destinationAccountName:item.categoryName+' · '+item.accountName} · {formatDate(item.date)}</small>
+                <small>{item.type==='transfer'?item.accountName+' → '+item.destinationAccountName:(item.splits?.length?(authUi.locale==='id'?'Beberapa kategori':'Split categories'):item.categoryName)+' · '+item.accountName} · {formatDate(item.date)}</small>
+                {#if item.fx&&item.baseCurrency&&item.baseCurrency!==item.currency}<small>{authUi.locale==='id'?'Kurs':'Rate'}: {privacy.hidden?'••••••':item.fx.rate} {item.baseCurrency} / {item.currency} · {formatDate(item.fx.date)} · {item.fx.provider}</small>{/if}
                 {#if item.tags?.length}<small class="tag-list">{item.tags.map(x=>x.name).join(' · ')}</small>{/if}
                 {#if item.attachments?.length}
                   <small class="receipt-status">{t('receiptAttached')}</small>
@@ -215,8 +228,21 @@
           {#if txType==='transfer'}
             <Field.Field><Field.FieldLabel for="destination">{t('toAccount')}</Field.FieldLabel><ChoiceSelect id="destination" bind:value={destinationAccountId} required items={[{value: '', label: String(t('chooseDestination'))}, ...(accounts.filter(a=>a.id!==accountId)).flatMap((account) => [{value: account.id, label: String(account.name)}])]} /></Field.Field>
           {:else}
+            <Button type="button" variant="outline" aria-pressed={splitEnabled} onclick={()=>{splitEnabled=!splitEnabled;if(splitEnabled&&!splits.length)splits=[{categoryId:'',amount:''},{categoryId:'',amount:''}];}}>{authUi.locale==='id'?'Bagi ke beberapa kategori':'Split across categories'}</Button>
+            {#if splitEnabled}
+            <fieldset class="split-editor"><legend>{authUi.locale==='id'?'Alokasi (total harus sama dengan jumlah transaksi)':'Allocations (must add up to the transaction total)'}</legend>
+              <p aria-live="polite">{authUi.locale==='id'?'Sisa untuk dialokasikan':'Remaining to allocate'}: {privacy.hidden?'••••••':formatExactAmount(splitRemaining,authUi.locale)}</p>
+              {#each splits as part,i}<div class="split-row"><label for={`split-category-${i}`}>{t('category')} {i+1}</label><ChoiceSelect id={`split-category-${i}`} bind:value={part.categoryId} required items={[{value:'',label:t('chooseCategory')},...categories.filter(x=>x.type===txType).map(x=>({value:x.id,label:x.name}))]}/><label for={`split-amount-${i}`}>{t('amount')} {i+1}</label><AmountInput id={`split-amount-${i}`} bind:value={part.amount} currency={accounts.find(x=>x.id===accountId)?.currency} required/><Button variant="ghost" type="button" disabled={splits.length<=2} onclick={()=>splits=splits.filter((_,n)=>n!==i)}>{t('delete')}</Button></div>{/each}
+              <Button variant="outline" type="button" disabled={splits.length>=30} onclick={()=>splits=[...splits,{categoryId:'',amount:''}]}>{authUi.locale==='id'?'Tambah alokasi':'Add allocation'}</Button>
+            </fieldset>
+            {:else}
             <Field.Field><Field.FieldLabel for="category">{t('category')}</Field.FieldLabel><ChoiceSelect id="category" bind:value={categoryId} required items={[{value: '', label: String(t('chooseCategory'))}, ...(categories.filter(c=>c.type===txType)).flatMap((category) => [{value: category.id, label: String(category.name)}])]} />{#if categorySuggestion&&categorySuggestion.categoryId!==categoryId}<Field.FieldDescription>{t('categorySuggestion').replace('{category}',categorySuggestion.categoryName)} {t(categorySuggestion.source==='explicit_rule'?'categorySuggestionExplicit':'categorySuggestionLearned')} <Button type="button" variant="link" size="sm" onclick={()=>categoryId=categorySuggestion!.categoryId}>{t('useSuggestion')}</Button></Field.FieldDescription>{/if}</Field.Field>
+            {/if}
           {/if}
+          {#if txType==='transfer'&&destinationAccountId&&accounts.find(x=>x.id===accountId)?.currency!==accounts.find(x=>x.id===destinationAccountId)?.currency}
+          <Field.Field><Field.FieldLabel for="destination-amount">{authUi.locale==='id'?'Jumlah diterima':'Amount received'}</Field.FieldLabel><AmountInput id="destination-amount" bind:value={destinationAmount} currency={accounts.find(x=>x.id===destinationAccountId)?.currency} required/></Field.Field>
+          {/if}
+          {#if txType==='transfer'&&!editing}<Field.Field><Field.FieldLabel for="transfer-fee">{authUi.locale==='id'?'Biaya transfer (dicatat sebagai pengeluaran terpisah)':'Transfer fee (recorded as a separate expense)'}</Field.FieldLabel><AmountInput id="transfer-fee" bind:value={feeAmount} currency={accounts.find(x=>x.id===accountId)?.currency}/></Field.Field>{#if feeAmount}<Field.Field><Field.FieldLabel for="fee-category">{t('category')}</Field.FieldLabel><ChoiceSelect id="fee-category" bind:value={feeCategoryId} required items={[{value:'',label:t('chooseCategory')},...categories.filter(x=>x.type==='expense').map(x=>({value:x.id,label:x.name}))]}/></Field.Field>{/if}{/if}
           <Field.Field><Field.FieldLabel for="tx-date">{t('date')}</Field.FieldLabel><DatePicker id="tx-date" bind:value={date} required /></Field.Field>
           <Field.Field><Field.FieldLabel for="merchant">{t('merchant')}</Field.FieldLabel><Input id="merchant" bind:value={merchant} maxlength={200} /></Field.Field>
           <Field.Field><Field.FieldLabel for="notes">{t('note')}</Field.FieldLabel><Input id="notes" bind:value={notes} maxlength={2000} placeholder={t('whatFor')} /></Field.Field>
@@ -261,12 +287,16 @@
 {/if}
 
 <style>
+  .select-transaction{display:grid;place-items:center;width:44px;height:44px}
+ .select-transaction :global([data-slot="checkbox"]){width:20px;height:20px;border-radius:8px}
+ .select-transaction :global([data-slot="checkbox"])::after{inset:-12px}
+ .split-editor{border:2px solid var(--border);border-radius:var(--radius-card);padding:16px;display:grid;gap:16px}.split-row{display:grid;gap:8px}
   .toolbar{display:flex;gap:8px;margin-bottom:12px}
   .toolbar :global(input){flex:1;min-width:0}
   .chips{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;padding:0}
   .chips :global([data-slot="button"]){min-height:44px;border:1px solid var(--input);border-radius:99px;background:var(--secondary);color:var(--secondary-foreground);padding:4px 12px;font:inherit;font-size:13px;cursor:pointer}
   .chips :global([data-slot="button"].clear){background:none;border-color:transparent;color:var(--brand-ink)}
-  .row{display:grid;grid-template-columns:38px minmax(0,1fr) auto auto;align-items:center;gap:8px}
+  .row{display:grid;grid-template-columns:44px 38px minmax(0,1fr) auto auto;align-items:center;gap:8px}
   .type-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:var(--radius-input);background:var(--secondary);color:var(--secondary-foreground);font-size:18px}
   .type-icon.income{color:var(--income-ink);background:var(--leaf-soft)}
   .type-icon.expense{color:var(--expense-ink);background:var(--coral-soft)}
@@ -295,5 +325,5 @@
   .filter-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .filter-actions{display:flex;justify-content:flex-end;gap:8px}
   @media (min-width:640px){:global(.form-sheet){bottom:24px;border:1px solid var(--border);border-radius:var(--radius-card)}}
-  @media(max-width:600px){.row{grid-template-columns:34px minmax(0,1fr) auto 28px;gap:4px}.description small{font-size:11px}}
+  @media(max-width:600px){.row{grid-template-columns:44px 28px minmax(0,1fr) auto 44px;gap:4px}.description small{font-size:11px}}
 </style>

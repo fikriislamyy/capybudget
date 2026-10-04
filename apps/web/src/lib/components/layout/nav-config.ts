@@ -41,6 +41,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     en: 'Tracking', id: 'Pencatatan',
     entries: [
+      { href: '/imports', en: 'Import & scan', id: 'Impor & pindai', icon: InvoiceIcon },
       { href: '/transactions', en: 'Transactions', id: 'Transaksi', icon: TxIcon },
       { href: '/accounts', en: 'Accounts', id: 'Akun', icon: WalletIcon },
       { href: '/categories', en: 'Categories', id: 'Kategori', icon: TagsIcon },

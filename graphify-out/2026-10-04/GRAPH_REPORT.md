@@ -1,7 +1,7 @@
 # Graph Report - capybudget  (2026-10-04)
 
 ## Corpus Check
-- 558 files · ~563,208 words
+- 558 files · ~563,181 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 73 file(s) not represented in the graph (top: .csv 53, .Identifier 7, (none) 6)
 

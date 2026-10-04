@@ -6,6 +6,12 @@ export const workspaceTables = [
   "categories",
   "tags",
   "transactions",
+  "transaction_fx_snapshots",
+  "transaction_splits",
+  "bulk_operations",
+  "import_jobs",
+  "import_rows",
+  "ocr_jobs",
   "transaction_tags",
   "journal_entries",
   "journal_lines",
@@ -65,6 +71,7 @@ export const secretColumns = new Set([
   "auth",
   "endpoint",
   "request_hash",
+  "cursor",
 ]);
 export function exportRecord(row: Record<string, unknown>) {
   return Object.fromEntries(
