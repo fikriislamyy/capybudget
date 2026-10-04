@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BudgetMethods from '$lib/components/personal-finance/budget-methods.svelte';
   import { formatDate } from '$lib/dates';
   import BudgetPond from '$lib/components/shared/budget-pond.svelte';
   import AmountInput from '$lib/components/forms/amount-input.svelte';
@@ -58,6 +59,7 @@
     {/if}
   </section>
 </div>
+<BudgetMethods />
 <AlertDialog.Root open={!!archiveTarget} onOpenChange={(v)=>{if(!v)archiveTarget=null;}}>
   <AlertDialog.Content>
     <AlertDialog.Header><AlertDialog.Title>{t('archiveBudgetTitle')}</AlertDialog.Title><AlertDialog.Description>{t('archiveBody')}</AlertDialog.Description></AlertDialog.Header>

@@ -8,6 +8,10 @@ import { securityRoutes } from './security/routes';
 import { guardAuthRequest } from './auth/rate-limit';
 import { trackingRoutes } from './tracking/routes';
 import { trackingV2Routes } from './tracking/v2/routes';
+import { subscriptionRoutes } from './personal-finance/v2/subscriptions';
+import { netWorthRoutes } from './personal-finance/v2/net-worth';
+import { debtRoutes } from './personal-finance/v2/debts';
+import { budgetMethodRoutes } from './personal-finance/v2/budgets';
 import { personalFinanceRoutes } from './personal-finance/routes';
 import { businessRoutes } from './business/routes';
 import { assistantRoutes } from './assistant/routes';
@@ -42,6 +46,10 @@ export const app = new Elysia()
   .use(notificationRoutes)
   .use(uxRoutes)
   .use(personalFinanceRoutes)
+  .use(budgetMethodRoutes)
+  .use(debtRoutes)
+  .use(subscriptionRoutes)
+  .use(netWorthRoutes)
   .use(businessRoutes)
   .use(assistantRoutes)
   .use(reportsRoutes)
