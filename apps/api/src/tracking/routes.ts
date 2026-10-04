@@ -267,6 +267,8 @@ export async function processRecurringWorkspace(workspaceId:string,ownerUserId:s
 }
 
 export async function reverseTransaction(tx: TransactionSql, ws: string, actor: Actor, id: string, date: string) {
+  const [debtPayment]=await q(tx,'select id from debt_payments where workspace_id=$1 and (principal_transaction_id=$2 or expense_transaction_id=$2) limit 1',[ws,id]);
+  if(debtPayment)reject('This transaction records a debt payment and cannot be edited or deleted.');
   const [old]=await q(tx,'select j.id from journal_entries j where j.workspace_id=$1 and j.transaction_id=$2 and j.reason in (\'create\',\'restore\') and not exists(select 1 from journal_entries r where r.workspace_id=j.workspace_id and r.reverses_entry_id=j.id) order by j.created_at desc limit 1 for update',[ws,id]);
   if(!old)return;
   const lines=await q(tx,'select ledger_account_id,debit::text,credit::text,currency,coalesce(base_debit,debit)::text as base_debit,coalesce(base_credit,credit)::text as base_credit from journal_lines where workspace_id=$1 and entry_id=$2',[ws,old.id]);

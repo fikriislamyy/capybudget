@@ -53,7 +53,10 @@ export const NAV_GROUPS: NavGroup[] = [
     entries: [
       { href: '/budgets', en: 'Budgets', id: 'Anggaran', icon: BudgetIcon },
       { href: '/goals', en: 'Goals', id: 'Target', icon: GoalIcon },
-      { href: '/bills', en: 'Bills', id: 'Tagihan', icon: BillIcon }
+      { href: '/bills', en: 'Bills', id: 'Tagihan', icon: BillIcon },
+      { href: '/debts', en: 'Debts', id: 'Utang', icon: WalletIcon },
+      { href: '/subscriptions', en: 'Subscriptions', id: 'Langganan', icon: RepeatIcon },
+      { href: '/net-worth', en: 'Net worth', id: 'Kekayaan bersih', icon: ReportsIcon }
     ]
   },
   {

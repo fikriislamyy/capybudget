@@ -116,3 +116,7 @@ bun run db:fresh
 This permanently deletes the database configured by `DATABASE_URL`, recreates it, and applies all checked-in Drizzle migrations. Type the database name to confirm. For an intentional noninteractive reset, use `bun run db:fresh --yes`. The command accepts only local PostgreSQL hosts, refuses production mode and system databases, and requires active database connections to be closed first. The configured database user must have permission to drop and create the database.
 
 Redis queues, uploaded files, and backups are retained. There is no separate demo-data seeder: sign up and complete onboarding to automatically create default categories and ledger accounts. If migration fails after the reset, fix the reported error and run `bun run db:migrate`.
+
+### Personal finance V2 progress
+
+Budget methods, debt tracking/payoff estimates, subscription review/detection, and net-worth snapshots are available. Household sharing and focused acceptance verification remain pending; issue #5 V2 is not complete. See [usage and implementation status](docs/personal-finance-v2.md). Run `bun run db:migrate` before starting the updated API.
