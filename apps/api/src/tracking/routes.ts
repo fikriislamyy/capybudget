@@ -1,4 +1,6 @@
 import { Elysia } from 'elysia';
+import { Money, positive, allocations } from './v2/money';
+import { valuation, rateFor, type Rate } from './v2/fx';
 import { createHash, randomUUID } from 'node:crypto';
 import type { TransactionSql } from 'postgres';
 import { auth } from '../auth';
@@ -7,8 +9,8 @@ import { nextOccurrenceDate, workspaceToday, type RecurrenceFrequency } from './
 import { deleteAttachment, getAttachment, putAttachment } from './storage';
 import { scheduleRecurringWorkspace } from './queue';
 
-type Actor = { id: string; name: string };
-type Input = {
+export type Actor = { id: string; name: string };
+export type Input = {
   type: 'income' | 'expense' | 'transfer';
   accountId: string;
   destinationAccountId?: string;
@@ -19,30 +21,34 @@ type Input = {
   notes?: string;
   merchant?: string;
   tagIds?: string[];
+  splits?: {categoryId:string;amount:string;notes?:string}[];
+  destinationAmount?: string;
+  feeAmount?: string;
+  feeCategoryId?: string;
 };
 const uuidRe = /^[\da-f]{8}-[\da-f]{4}-[1-8][\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i;
 const amountRe = /^(0|[1-9]\d{0,14})(\.\d{1,4})?$/;
 const dateRe = /^\d{4}-\d{2}-\d{2}$/;
 
-function fail(status: number, code: string, message: string) {
+export function fail(status: number, code: string, message: string) {
   return Response.json({ code, message }, { status, headers: { 'Cache-Control': 'no-store' } });
 }
-function reject(message: string): never {
+export function reject(message: string): never {
   throw Object.assign(new Error(message), { status: 422, code: 'INVALID_INPUT' });
 }
 function decimal(value: unknown) {
-  if (typeof value !== 'string' || !amountRe.test(value) || Number(value) === 0) reject('Enter a positive amount with at most four decimal places.');
+  if (typeof value !== 'string' || !amountRe.test(value) || new Money(value).eq(0)) reject('Enter a positive amount with at most four decimal places.');
   return value;
 }
-function isoDate(value: unknown) {
-  if (typeof value !== 'string' || !dateRe.test(value) || new Date(value + 'T00:00:00Z').toISOString().slice(0,10) !== value) reject('Enter a valid date in YYYY-MM-DD format.');
+export function isoDate(value: unknown) {
+  if (typeof value !== 'string' || !dateRe.test(value) || (Number.isNaN(new Date(value + 'T00:00:00Z').getTime())||new Date(value + 'T00:00:00Z').toISOString().slice(0,10) !== value)) reject('Enter a valid date in YYYY-MM-DD format.');
   return value;
 }
-async function readLimitedBody(request:Request,limit:number){
+export async function readLimitedBody(request:Request,limit:number){
   if(!request.body)return new Uint8Array();
   const reader=request.body.getReader(),chunks:Uint8Array[]=[];let length=0;
   try{
-    while(true){const {done,value}=await reader.read();if(done)break;length+=value.byteLength;if(length>limit){await reader.cancel();throw new RangeError('body too large');}chunks.push(value);}
+    while(true){const {done,value}=await reader.read();if(done)break;length+=value.byteLength;if(length>limit){await reader.cancel();throw Object.assign(new RangeError('Document must be 10 MB or smaller.'),{status:413,code:'BODY_TOO_LARGE'});}chunks.push(value);}
   }finally{reader.releaseLock();}
   const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return bytes;
 }
@@ -52,7 +58,7 @@ async function actorFor(request: Request): Promise<Actor | Response> {
   if (!session.user.emailVerified) return fail(403,'EMAIL_VERIFICATION_REQUIRED','Verify your email to continue.');
   return { id: session.user.id, name: session.user.name };
 }
-async function withWorkspace<T>(request: Request, workspaceId: string, run: (tx: TransactionSql, actor: Actor) => Promise<T>): Promise<T | Response> {
+export async function withWorkspace<T>(request: Request, workspaceId: string, run: (tx: TransactionSql, actor: Actor) => Promise<T>): Promise<T | Response> {
   if (!uuidRe.test(workspaceId)) return fail(400,'INVALID_WORKSPACE_ID','Workspace ID is invalid.');
   const actor = await actorFor(request);
   if (actor instanceof Response) return actor;
@@ -66,12 +72,12 @@ async function withWorkspace<T>(request: Request, workspaceId: string, run: (tx:
   } catch (e) {
     const err=e as Error & {status?:number;code?:string};
     if(err.status) return fail(err.status,err.code??'REQUEST_FAILED',err.message);
-    if(['23505','23503','23514'].includes(err.code??'')) return fail(422,'INVALID_REFERENCE','One or more selected values are invalid.');
+    if(['23505','23503','23514','22P02','22003'].includes(err.code??'')) return fail(422,'INVALID_REFERENCE','One or more selected values are invalid.');
     console.error('Tracking request failed',{sqlState:err.code});
     return fail(500,'INTERNAL_ERROR','The request could not be completed.');
   }
 }
-const q = (tx: TransactionSql, text: string, values: unknown[] = []) => tx.unsafe(text,values as never[]);
+export const q = (tx: TransactionSql, text: string, values: unknown[] = []) => tx.unsafe(text,values as never[]);
 
 export async function seedWorkspace(tx: TransactionSql, workspaceId: string, currency: string) {
   await q(tx,"insert into ledger_accounts(workspace_id,code,name,class,currency) values($1,'equity:opening','Opening balance','equity',$2) on conflict do nothing",[workspaceId,currency]);
@@ -83,11 +89,11 @@ export async function seedWorkspace(tx: TransactionSql, workspaceId: string, cur
     await q(tx,'insert into categories(workspace_id,name,normalized_name,type,ledger_account_id,icon,sort_order) select $1,$2,lower($2),$3,id,$4,$5 from ledger_accounts where workspace_id=$1 and code=$6 on conflict do nothing',[workspaceId,name,type,icon,i,code]);
   }
 }
-async function audit(tx: TransactionSql, ws: string, actor: string, type: string, id: string, action: string, before: unknown, after: unknown) {
+export async function audit(tx: TransactionSql, ws: string, actor: string, type: string, id: string, action: string, before: unknown, after: unknown) {
   await q(tx,'insert into audit_logs(workspace_id,actor_user_id,entity_type,entity_id,action,before,after) values($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)',[ws,actor,type,id,action,before?JSON.stringify(before):null,after?JSON.stringify(after):null]);
 }
 
-async function learnCategory(tx:TransactionSql,ws:string,actor:Actor,transaction:any,previousCategoryId?:string|null){
+export async function learnCategory(tx:TransactionSql,ws:string,actor:Actor,transaction:any,previousCategoryId?:string|null){
   if(!['income','expense'].includes(transaction.type)||!transaction.categoryId)return;
   const merchant=String(transaction.merchant??'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('en-US').slice(0,200);if(!merchant)return;
   await q(tx,'insert into assistant_settings(workspace_id,user_id) values($1,$2) on conflict do nothing',[ws,actor.id]);
@@ -99,11 +105,11 @@ async function learnCategory(tx:TransactionSql,ws:string,actor:Actor,transaction
   await refreshLearnedCategory(tx,ws,actor.id,transaction.type,merchant);
 }
 
-function normalizedCategoryMerchant(value: unknown) {
+export function normalizedCategoryMerchant(value: unknown) {
   return String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US').slice(0, 200);
 }
 
-async function refreshLearnedCategory(tx:TransactionSql,ws:string,userId:string,type:string,merchant:string){
+export async function refreshLearnedCategory(tx:TransactionSql,ws:string,userId:string,type:string,merchant:string){
   const groups=await q(tx,`select chosen_category_id as "categoryId",count(*)::int as count from (
     select distinct on(f.transaction_id) f.transaction_id,f.chosen_category_id,f.transaction_version
     from category_feedback f join transactions t on t.workspace_id=f.workspace_id and t.id=f.transaction_id
@@ -121,14 +127,17 @@ async function refreshLearnedCategory(tx:TransactionSql,ws:string,userId:string,
   }
 }
 
-async function dirtyUnusualBaselines(tx:TransactionSql,ws:string,categoryId:string|null,currency:string,type:string,date:string){
+export async function dirtyUnusualBaselines(tx:TransactionSql,ws:string,categoryId:string|null,currency:string,type:string,date:string){
   if(type!=='expense')return;
   const [workspace]=await q(tx,'select owner_user_id from workspaces where id=$1',[ws]);if(!workspace)return;
   const rules=await q(tx,"select scope_key from finance_notification_rules where workspace_id=$1 and user_id=$2 and rule_type='unusual_spending' and enabled and currency=$3 and category_id is not distinct from $4::uuid",[ws,workspace.owner_user_id,currency,categoryId]);
   for(const rule of rules)await q(tx,"insert into finance_notification_evaluation_state(workspace_id,user_id,rule_key,scope_key,period_key,state,dirty_version,processed_version) values($1,$2,'unusual_spending',$3,'dirty',jsonb_build_object('fromDate',($4::date+1)::text,'throughDate',($4::date+90)::text,'lastId',null),1,0) on conflict(workspace_id,user_id,rule_key,scope_key,period_key) do update set state=jsonb_build_object('fromDate',least(coalesce(nullif(finance_notification_evaluation_state.state->>'fromDate','')::date,(excluded.state->>'fromDate')::date),(excluded.state->>'fromDate')::date)::text,'throughDate',greatest(coalesce(nullif(finance_notification_evaluation_state.state->>'throughDate','')::date,(excluded.state->>'throughDate')::date),(excluded.state->>'throughDate')::date)::text,'lastId',null),dirty_version=finance_notification_evaluation_state.dirty_version+1,next_evaluation_at=now(),updated_at=now()",[ws,workspace.owner_user_id,rule.scope_key,date]);
 }
 
-async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, input: Input, existingId?: string, before?:any) {
+export async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, input: Input, existingId?: string, before?:any, postingRates?:{source?:Rate;destination?:Rate}): Promise<{id:string;journalId:string;version:number;splits:NonNullable<Input["splits"]>;baseAmount:string;baseCurrency:string;feeTransactionId:string|null}> {
+  if(!input||typeof input!=='object')reject('Enter transaction details.');
+  if('fxRate' in input||'destinationFxRate' in input)reject('Exchange rates are automatic. Remove rate overrides and try again.');
+  if(input.splits!==undefined&&!Array.isArray(input.splits))reject('Allocations must be a list.');
   if(!['income','expense','transfer'].includes(input.type)) reject('Choose a valid transaction type.');
   if(!uuidRe.test(input.accountId)) reject('Choose an account.');
   const amount=decimal(input.amount), date=isoDate(input.date);
@@ -137,16 +146,28 @@ async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, inp
 
   const [account]=await q(tx,'select id,ledger_account_id,currency from accounts where workspace_id=$1 and id=$2 and archived_at is null and deleted_at is null',[ws,input.accountId]);
   if(!account) reject('Choose an active account in this workspace.');
-  let category:any=null, destination:any=null;
+  const [workspace]=await q(tx,'select currency from workspaces where id=$1',[ws]);
+  const [frozenFx]=before&&date===String(before.occurred_at)&&input.accountId===before.account_id?await q(tx,'select null as id,rate::text,provider,rate_date::text as date,destination_rate::text from transaction_fx_snapshots where workspace_id=$1 and transaction_id=$2 order by revision desc limit 1',[ws,before.id]):[];
+  const frozenRate:Rate|undefined=frozenFx?{id:null,rate:String(frozenFx.rate),provider:String(frozenFx.provider),date:String(frozenFx.date)}:undefined;
+  const sourceFx=await valuation(tx,account.currency,workspace.currency,amount,date,postingRates?.source??frozenRate);
+  let destination:any=null,destFx:any=null,destinationAmount:string|null=null;
+  const parts=input.splits?.length?input.splits:[{categoryId:input.categoryId!,amount}];
+  const categories:any[]=[];
   if(input.type==='transfer'){
-    if(!input.destinationAccountId||!uuidRe.test(input.destinationAccountId)||input.destinationAccountId===input.accountId||input.categoryId) reject('Choose two different accounts for this transfer.');
+    if(input.splits?.length||!input.destinationAccountId||!uuidRe.test(input.destinationAccountId)||input.destinationAccountId===input.accountId||input.categoryId)reject('Choose two different accounts for an unsplit transfer.');
     [destination]=await q(tx,'select id,ledger_account_id,currency from accounts where workspace_id=$1 and id=$2 and archived_at is null and deleted_at is null',[ws,input.destinationAccountId]);
-    if(!destination||destination.currency!==account.currency) reject('Choose a destination account in the same currency.');
+    if(!destination)reject('Choose an active destination account.');
+    destinationAmount=destination.currency===account.currency?amount:positive(input.destinationAmount);
+    destFx=destination.currency===account.currency?sourceFx:await valuation(tx,destination.currency,workspace.currency,destinationAmount,date,postingRates?.destination??(frozenFx?.destination_rate&&before?.destination_account_id===input.destinationAccountId?{id:null,rate:String(frozenFx.destination_rate),date:String(frozenFx.date),provider:destination.currency===workspace.currency?'identity':String(frozenFx.provider)}:undefined));
   }else{
-    if(!input.categoryId||!uuidRe.test(input.categoryId)||input.destinationAccountId) reject('Choose a category for this transaction.');
-    [category]=await q(tx,'select id,type,ledger_account_id from categories where workspace_id=$1 and id=$2 and archived_at is null',[ws,input.categoryId]);
-    if(!category||category.type!==input.type) reject('Choose an active category matching the transaction type.');
-    if(input.currency&&input.currency!==account.currency) reject('Transaction currency must match its account.');
+    if(input.destinationAccountId||(input.currency&&input.currency!==account.currency))reject('Transaction currency must match its account.');
+    if(input.splits?.length){if(input.categoryId)reject('Choose a single category or splits, not both.');allocations(amount,input.splits);}
+    for(const part of parts){
+      if(!part.categoryId||!uuidRe.test(part.categoryId)||(part.notes?.length??0)>2000)reject('Choose a category for every allocation.');
+      const [category]=await q(tx,'select id,type,ledger_account_id from categories where workspace_id=$1 and id=$2 and archived_at is null',[ws,part.categoryId]);
+      if(!category||category.type!==input.type)reject('Every category must be active and match the transaction type.');
+      categories.push(category);
+    }
   }
   const tags=[...new Set(input.tagIds??[])];
   if(tags.length>20||tags.some(id=>!uuidRe.test(id))) reject('Choose up to 20 valid tags.');
@@ -159,29 +180,62 @@ async function makeTransaction(tx: TransactionSql, ws: string, actor: Actor, inp
   if(existingId)await q(tx,'delete from transaction_tags where workspace_id=$1 and transaction_id=$2',[ws,id]);
   const journalId=randomUUID();
   await q(tx,'insert into journal_entries(id,workspace_id,transaction_id,effective_date,reason,created_by) values($1,$2,$3,$4,$5,$6)',[journalId,ws,id,date,'create',actor.id]);
-  let lines:{ledger:string;debit:string;credit:string}[];
-  if(input.type==='transfer') lines=[{ledger:destination.ledger_account_id,debit:amount,credit:'0'},{ledger:account.ledger_account_id,debit:'0',credit:amount}];
-  else if(input.type==='income') lines=[{ledger:account.ledger_account_id,debit:amount,credit:'0'},{ledger:category.ledger_account_id,debit:'0',credit:amount}];
-  else lines=[{ledger:category.ledger_account_id,debit:amount,credit:'0'},{ledger:account.ledger_account_id,debit:'0',credit:amount}];
-  for(const line of lines) await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency) values($1,$2,$3,$4,$5,$6)',[ws,journalId,line.ledger,line.debit,line.credit,account.currency]);
+  await q(tx,'update transactions set base_amount=$1,base_currency=$2,destination_amount=$3 where workspace_id=$4 and id=$5',[sourceFx.baseAmount,workspace.currency,destinationAmount,ws,id]);
+  await q(tx,'delete from transaction_splits where workspace_id=$1 and transaction_id=$2',[ws,id]);
+  const lines:{ledger:string;debit:string;credit:string;currency:string;baseDebit:string;baseCredit:string}[]=[];
+  const line=(ledger:string,value:string,baseValue:string,currency:string,debit:boolean)=>lines.push({ledger,debit:debit?value:'0',credit:debit?'0':value,currency,baseDebit:debit?baseValue:'0',baseCredit:debit?'0':baseValue});
+  if(input.type==='transfer'){
+    line(account.ledger_account_id,amount,sourceFx.baseAmount,account.currency,false);
+    line(destination.ledger_account_id,destinationAmount!,destFx.baseAmount,destination.currency,true);
+    const delta=new Money(destFx.baseAmount).sub(sourceFx.baseAmount);
+    if(!delta.isZero()){
+      const [fxLedger]=await q(tx,"insert into ledger_accounts(workspace_id,code,name,class,currency) values($1,'fx:gain-loss','Currency conversion gain or loss','equity',$2) on conflict(workspace_id,code) do update set code=excluded.code returning id",[ws,workspace.currency]);
+      line(fxLedger.id,delta.abs().toFixed(4),delta.abs().toFixed(4),workspace.currency,delta.isNegative());
+    }
+  }else{
+    line(account.ledger_account_id,amount,sourceFx.baseAmount,account.currency,input.type==='income');
+    let remaining=new Money(sourceFx.baseAmount);
+    for(let i=0;i<parts.length;i++){
+      const part=parts[i]!,baseValue=i===parts.length-1?remaining.toFixed(4):new Money(sourceFx.baseAmount).mul(part.amount).div(amount).toDecimalPlaces(4,Money.ROUND_DOWN).toFixed(4);
+      remaining=remaining.sub(baseValue);
+      line(categories[i].ledger_account_id,part.amount,baseValue,account.currency,input.type==='expense');
+      if(input.splits?.length)await q(tx,'insert into transaction_splits(workspace_id,transaction_id,category_id,amount,base_amount,notes,position) values($1,$2,$3,$4,$5,$6,$7)',[ws,id,part.categoryId,part.amount,baseValue,part.notes??null,i]);
+    }
+  }
+  for(const l of lines)await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency,base_debit,base_credit) values($1,$2,$3,$4,$5,$6,$7,$8)',[ws,journalId,l.ledger,l.debit,l.credit,l.currency,l.baseDebit,l.baseCredit]);
+  let feeTransactionId:string|null=null;
+  if(input.feeAmount){
+    if(input.type!=='transfer'||existingId)reject('Record transfer fees as a separate expense when editing.');
+    const fee=await makeTransaction(tx,ws,actor,{type:'expense',accountId:input.accountId,categoryId:input.feeCategoryId,amount:input.feeAmount,date,notes:'Transfer fee'},undefined,undefined,{source:sourceFx});
+    feeTransactionId=fee.id;
+  }
+  await q(tx,'insert into transaction_fx_snapshots(workspace_id,transaction_id,revision,source_currency,base_currency,source_amount,base_amount,rate,rate_date,provider,destination_currency,destination_amount,destination_base_amount,destination_rate,actual_transfer_rate,rounding_adjustment,fee_transaction_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)',[ws,id,row.version,account.currency,workspace.currency,amount,sourceFx.baseAmount,sourceFx.rate,sourceFx.date,sourceFx.provider,destination?.currency??null,destinationAmount,destFx?.baseAmount??null,destFx?.rate??null,destinationAmount?new Money(destinationAmount).div(amount).toFixed(12):null,new Money(sourceFx.baseAmount).sub(new Money(amount).mul(sourceFx.rate)).toFixed(12),feeTransactionId]);
   for(const tagId of tags){
     const [tag]=await q(tx,'select id from tags where workspace_id=$1 and id=$2 and archived_at is null',[ws,tagId]);
     if(!tag) reject('A selected tag is unavailable.');
     await q(tx,'insert into transaction_tags(workspace_id,transaction_id,tag_id) values($1,$2,$3)',[ws,id,tagId]);
   }
   await audit(tx,ws,actor.id,'transaction',id,'create',null,row);
-  return {...row,id,journalId};
+  await learnCategory(tx,ws,actor,{...row,merchant:input.merchant,categoryId:input.categoryId});
+  return {...row,id,journalId,version:Number(row.version),splits:input.splits??[],baseAmount:sourceFx.baseAmount,baseCurrency:workspace.currency,feeTransactionId};
 }
 
 async function materializeRecurring(tx:TransactionSql,workspaceId:string,actor:Actor,days=30){
   const horizon=Math.min(60,Math.max(1,days));
-  const [workspace]=await q(tx,'select timezone from workspaces where id=$1',[workspaceId]);
+  const [workspace]=await q(tx,'select timezone,currency from workspaces where id=$1',[workspaceId]);
   const today=workspaceToday(workspace.timezone),until=new Date(Date.now()+horizon*86400000).toISOString().slice(0,10);
+  // Missing dated FX leaves this occurrence pending without blocking other rules.
+  const canPost = async (currency:string,date:string) => {
+    if(currency===workspace.currency)return true;
+    try{await rateFor(tx,currency,workspace.currency,date);return true;}
+    catch(error){if([422,502,503].includes((error as {status?:number}).status??0))return false;throw error;}
+  };
   const rules=await q(tx,"select * from recurring_rules where workspace_id=$1 and status='active' order by next_due_date for update",[workspaceId]);
   for(const rule of rules){
     const pending=await q(tx,"select id,scheduled_date,template_snapshot from recurring_occurrences where workspace_id=$1 and rule_id=$2 and status='pending' and scheduled_date<=$3 order by scheduled_date for update",[workspaceId,rule.id,today]);
     if(rule.mode==='auto')for(const occurrence of pending){
       const snap=occurrence.template_snapshot;
+      if(!await canPost(snap.currency,occurrence.scheduled_date))continue;
       const transaction=await makeTransaction(tx,workspaceId,actor,{type:snap.type,accountId:snap.accountId,destinationAccountId:snap.destinationAccountId??undefined,categoryId:snap.categoryId??undefined,amount:snap.amount,currency:snap.currency,date:occurrence.scheduled_date,notes:snap.notes});
       await q(tx,"update recurring_occurrences set status='posted',transaction_id=$1,updated_at=now() where workspace_id=$2 and id=$3",[transaction.id,workspaceId,occurrence.id]);
     }
@@ -189,7 +243,7 @@ async function materializeRecurring(tx:TransactionSql,workspaceId:string,actor:A
     while(due<=until&&created<100&&(!rule.end_date||due<=String(rule.end_date))){
       const snapshot={type:rule.type,accountId:rule.account_id,destinationAccountId:rule.destination_account_id,categoryId:rule.category_id,amount:String(rule.amount),currency:rule.currency,notes:rule.notes??rule.name};
       const [occurrence]=await q(tx,"insert into recurring_occurrences(workspace_id,rule_id,scheduled_date,rule_version,template_snapshot,status) values($1,$2,$3,$4,$5::jsonb,'pending') on conflict(workspace_id,rule_id,scheduled_date) do nothing returning id,status",[workspaceId,rule.id,due,rule.version,JSON.stringify(snapshot)]);
-      if(occurrence&&rule.mode==='auto'&&due<=today){
+      if(occurrence&&rule.mode==='auto'&&due<=today&&await canPost(rule.currency,due)){
         const transaction=await makeTransaction(tx,workspaceId,actor,{...snapshot,date:due} as Input);
         await q(tx,"update recurring_occurrences set status='posted',transaction_id=$1,updated_at=now() where workspace_id=$2 and id=$3",[transaction.id,workspaceId,occurrence.id]);
       }
@@ -212,13 +266,13 @@ export async function processRecurringWorkspace(workspaceId:string,ownerUserId:s
   });
 }
 
-async function reverseTransaction(tx: TransactionSql, ws: string, actor: Actor, id: string, date: string) {
+export async function reverseTransaction(tx: TransactionSql, ws: string, actor: Actor, id: string, date: string) {
   const [old]=await q(tx,'select j.id from journal_entries j where j.workspace_id=$1 and j.transaction_id=$2 and j.reason in (\'create\',\'restore\') and not exists(select 1 from journal_entries r where r.workspace_id=j.workspace_id and r.reverses_entry_id=j.id) order by j.created_at desc limit 1 for update',[ws,id]);
   if(!old)return;
-  const lines=await q(tx,'select ledger_account_id,debit::text,credit::text,currency from journal_lines where workspace_id=$1 and entry_id=$2',[ws,old.id]);
+  const lines=await q(tx,'select ledger_account_id,debit::text,credit::text,currency,coalesce(base_debit,debit)::text as base_debit,coalesce(base_credit,credit)::text as base_credit from journal_lines where workspace_id=$1 and entry_id=$2',[ws,old.id]);
   const reversalId=randomUUID();
   await q(tx,'insert into journal_entries(id,workspace_id,transaction_id,effective_date,reason,reverses_entry_id,created_by) values($1,$2,$3,$4,\'reversal\',$5,$6)',[reversalId,ws,id,date,old.id,actor.id]);
-  for(const line of lines)await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency) values($1,$2,$3,$4,$5,$6)',[ws,reversalId,line.ledger_account_id,line.credit,line.debit,line.currency]);
+  for(const line of lines)await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency,base_debit,base_credit) values($1,$2,$3,$4,$5,$6,$7,$8)',[ws,reversalId,line.ledger_account_id,line.credit,line.debit,line.currency,line.base_credit,line.base_debit]);
 }
 
 export const trackingRoutes=new Elysia({name:'tracking-routes'})
@@ -262,19 +316,23 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
  .post('/api/workspaces/:workspaceId/accounts',async({request,params,body})=>withWorkspace(request,params.workspaceId,async(tx,actor)=>{
    const b=body as any;
    if(typeof b.name!=='string'||!b.name.trim()||b.name.trim().length>100||!['cash','bank','e_wallet','credit_card','savings','investment'].includes(b.kind))reject('Enter a name and valid account type.');
+   if('fxRate' in b||'destinationFxRate' in b)reject('Exchange rates are automatic. Remove rate overrides and try again.');
    const balance=typeof b.openingBalance==='string'?b.openingBalance:'0';
    if(!/^-?(0|[1-9]\d{0,14})(\.\d{1,4})?$/.test(balance))reject('Enter a valid opening balance.');
    const openingDate=b.openingDate?isoDate(b.openingDate):new Date().toISOString().slice(0,10);
    const [w]=await q(tx,'select currency from workspaces where id=$1',[params.workspaceId]);
+   const currency=typeof b.currency==='string'?b.currency.toUpperCase():w.currency;
+   if(!/^[A-Z]{3}$/.test(currency))reject('Choose a valid currency.');
+   const openingFx=/^-?0(?:\.0{1,4})?$/.test(balance)?null:await valuation(tx,currency,w.currency,balance.replace(/^-/,''),openingDate);
    const id=randomUUID(),ledger=randomUUID();
-   await q(tx,'insert into ledger_accounts(id,workspace_id,code,name,class,currency) values($1,$2,$3,$4,$5,$6)',[ledger,params.workspaceId,'wallet:'+id,b.name.trim(),b.kind==='credit_card'?'liability':'asset',w.currency]);
-   const [account]=await q(tx,'insert into accounts(id,workspace_id,name,kind,currency,opening_balance,opening_date,ledger_account_id) values($1,$2,$3,$4,$5,$6,$7,$8) returning id,name,kind,currency,opening_balance::text as "openingBalance",opening_date as "openingDate",version',[id,params.workspaceId,b.name.trim(),b.kind,w.currency,balance,openingDate,ledger]);
+   await q(tx,'insert into ledger_accounts(id,workspace_id,code,name,class,currency) values($1,$2,$3,$4,$5,$6)',[ledger,params.workspaceId,'wallet:'+id,b.name.trim(),b.kind==='credit_card'?'liability':'asset',currency]);
+   const [account]=await q(tx,'insert into accounts(id,workspace_id,name,kind,currency,opening_balance,opening_date,ledger_account_id) values($1,$2,$3,$4,$5,$6,$7,$8) returning id,name,kind,currency,opening_balance::text as "openingBalance",opening_date as "openingDate",version',[id,params.workspaceId,b.name.trim(),b.kind,currency,balance,openingDate,ledger]);
    if(!/^[-+]?0(?:\.0{1,4})?$/.test(balance)){
      const [equity]=await q(tx,"select id from ledger_accounts where workspace_id=$1 and code='equity:opening'",[params.workspaceId]);
      const j=randomUUID(),abs=balance.startsWith('-')?balance.slice(1):balance;
      const positive=!balance.startsWith('-');
      await q(tx,'insert into journal_entries(id,workspace_id,effective_date,reason,created_by) values($1,$2,$3,\'opening\',$4)',[j,params.workspaceId,openingDate,actor.id]);
-     await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency) values($1,$2,$3,$4,$5,$6),($1,$2,$7,$8,$9,$6)',[params.workspaceId,j,ledger,positive?abs:'0',positive?'0':abs,w.currency,equity.id,positive?'0':abs,positive?abs:'0']);
+     await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency,base_debit,base_credit) values($1,$2,$3,$4,$5,$6,$10,$11),($1,$2,$7,$8,$9,$12,$11,$10)',[params.workspaceId,j,ledger,positive?abs:'0',positive?'0':abs,currency,equity.id,positive?'0':openingFx!.baseAmount,positive?openingFx!.baseAmount:'0',positive?openingFx!.baseAmount:'0',positive?'0':openingFx!.baseAmount,w.currency]);
    }
    await audit(tx,params.workspaceId,actor.id,'account',id,'create',null,account);
    return Response.json({account},{status:201});
@@ -347,11 +405,12 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    if(type)add(n=>'t.type=$'+n,type);
    if(qtext)add(n=>'(coalesce(t.notes,\'\') ilike $'+n+' or coalesce(t.merchant,\'\') ilike $'+n+')','%'+qtext+'%');
    if(accountIds)add(n=>'(t.account_id=any($'+n+'::uuid[]) or t.destination_account_id=any($'+n+'::uuid[]))',accountIds);
-   if(categoryIds)add(n=>'(t.category_id=any($'+n+'::uuid[]) or c.parent_id=any($'+n+'::uuid[]))',categoryIds);
+   if(categoryIds)add(n=>"exists(select 1 from tracking_allocations al join categories ac on ac.workspace_id=al.workspace_id and ac.id=al.category_id where al.workspace_id=t.workspace_id and al.id=t.id and (ac.id=any($"+n+"::uuid[]) or ac.parent_id=any($"+n+"::uuid[])))",categoryIds);
    if(tagIds)add(n=>'exists(select 1 from transaction_tags ft where ft.workspace_id=t.workspace_id and ft.transaction_id=t.id and ft.tag_id=any($'+n+'::uuid[]))',tagIds);
-   if(min!==null)add(n=>'t.amount >= $'+n+'::numeric',min);
-   if(max!==null)add(n=>'t.amount <= $'+n+'::numeric',max);
-   const keyExpr=sort==='amount'?'t.amount':sort==='category'?'coalesce(c.normalized_name,\'\')':sort==='tag'?'coalesce((select min(g.normalized_name) from transaction_tags st join tags g on g.workspace_id=st.workspace_id and g.id=st.tag_id where st.workspace_id=t.workspace_id and st.transaction_id=t.id),\'\')':'t.occurred_at';
+   const moneyExpr=accountIds?.length===1?'t.amount':'coalesce(t.base_amount,t.amount)';
+   if(min!==null)add(n=>moneyExpr+' >= $'+n+'::numeric',min);
+   if(max!==null)add(n=>moneyExpr+' <= $'+n+'::numeric',max);
+   const keyExpr=sort==='amount'?moneyExpr:sort==='category'?'coalesce(c.normalized_name,\'\')':sort==='tag'?'coalesce((select min(g.normalized_name) from transaction_tags st join tags g on g.workspace_id=st.workspace_id and g.id=st.tag_id where st.workspace_id=t.workspace_id and st.transaction_id=t.id),\'\')':'t.occurred_at';
    const keyType=sort==='date'?'date':sort==='amount'?'numeric':'text';
    const cursor=u.searchParams.get('cursor');
    if(cursor){
@@ -365,7 +424,7 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    }
    const order=keyExpr+' '+(direction==='asc'?'ASC':'DESC')+',t.id '+(direction==='asc'?'ASC':'DESC');
    values.push(limit+1);
-   const rows=await q(tx,'select t.id,t.type,t.account_id as "accountId",t.destination_account_id as "destinationAccountId",t.category_id as "categoryId",c.name as "categoryName",a.name as "accountName",d.name as "destinationAccountName",t.amount::text,t.currency,t.occurred_at as date,t.notes,t.merchant,t.version,t.created_at as "createdAt",('+keyExpr+')::text as "cursorValue",coalesce((select json_agg(json_build_object(\'id\',g.id,\'name\',g.name) order by g.normalized_name) from transaction_tags tt join tags g on g.workspace_id=tt.workspace_id and g.id=tt.tag_id where tt.workspace_id=t.workspace_id and tt.transaction_id=t.id),\'[]\'::json) as tags,coalesce((select json_agg(json_build_object(\'id\',x.id,\'name\',x.original_name,\'mimeType\',x.mime_type) order by x.created_at) from attachments x where x.workspace_id=t.workspace_id and x.transaction_id=t.id and x.status=\'ready\' and x.deleted_at is null),\'[]\'::json) as attachments from transactions t left join categories c on c.workspace_id=t.workspace_id and c.id=t.category_id join accounts a on a.workspace_id=t.workspace_id and a.id=t.account_id left join accounts d on d.workspace_id=t.workspace_id and d.id=t.destination_account_id where '+where.join(' and ')+' order by '+order+' limit $'+values.length,values);
+   const rows=await q(tx,'select t.id,t.type,t.account_id as "accountId",t.destination_account_id as "destinationAccountId",t.category_id as "categoryId",c.name as "categoryName",a.name as "accountName",d.name as "destinationAccountName",t.amount::text,t.currency,t.occurred_at as date,t.notes,t.merchant,t.version,t.created_at as "createdAt",t.destination_amount::text as "destinationAmount",t.base_amount::text as "baseAmount",t.base_currency as "baseCurrency",(select json_build_object(\'rate\',f.rate::text,\'provider\',f.provider,\'date\',f.rate_date::text) from transaction_fx_snapshots f where f.workspace_id=t.workspace_id and f.transaction_id=t.id order by f.revision desc limit 1) as fx,coalesce((select json_agg(json_build_object(\'categoryId\',s.category_id,\'amount\',s.amount::text,\'notes\',s.notes) order by s.position) from transaction_splits s where s.workspace_id=t.workspace_id and s.transaction_id=t.id),\'[]\'::json) as splits,('+keyExpr+')::text as "cursorValue",coalesce((select json_agg(json_build_object(\'id\',g.id,\'name\',g.name) order by g.normalized_name) from transaction_tags tt join tags g on g.workspace_id=tt.workspace_id and g.id=tt.tag_id where tt.workspace_id=t.workspace_id and tt.transaction_id=t.id),\'[]\'::json) as tags,coalesce((select json_agg(json_build_object(\'id\',x.id,\'name\',x.original_name,\'mimeType\',x.mime_type) order by x.created_at) from attachments x where x.workspace_id=t.workspace_id and x.transaction_id=t.id and x.status=\'ready\' and x.deleted_at is null),\'[]\'::json) as attachments from transactions t left join categories c on c.workspace_id=t.workspace_id and c.id=t.category_id join accounts a on a.workspace_id=t.workspace_id and a.id=t.account_id left join accounts d on d.workspace_id=t.workspace_id and d.id=t.destination_account_id where '+where.join(' and ')+' order by '+order+' limit $'+values.length,values);
    const hasMore=rows.length>limit,items=rows.slice(0,limit),last=items[items.length-1];
    const nextCursor=hasMore&&last?Buffer.from(JSON.stringify({hash:filterHash,sort,direction,value:String(last.cursorValue),id:String(last.id)})).toString('base64url'):null;
    return {items:items.map(({cursorValue:_,...item}:any)=>item),nextCursor};
@@ -385,7 +444,6 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    if(anchor<workspaceToday(workspace.timezone))reject('Recurring rules must start today or later. Use an explicit preview before importing past occurrences.');
    const [account]=await q(tx,'select id,currency from accounts where workspace_id=$1 and id=$2 and archived_at is null and deleted_at is null',[params.workspaceId,b.accountId]);
    if(!account)reject('Choose an active account in this workspace.');
-   if(account.currency!==workspace.currency)reject('Account currency must match the workspace currency.');
    let categoryId=null,destinationId=null;
    if(b.type==='transfer'){
      const [destination]=await q(tx,'select id,currency from accounts where workspace_id=$1 and id=$2 and archived_at is null and deleted_at is null',[params.workspaceId,b.destinationAccountId]);
@@ -399,7 +457,7 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    const endDate=b.endDate?isoDate(b.endDate):null;
    if(endDate&&endDate<anchor)reject('The end date must be on or after the start date.');
    if((b.notes?.length??0)>2000)reject('Notes are too long.');
-   const [rule]=await q(tx,'insert into recurring_rules(workspace_id,name,type,account_id,destination_account_id,category_id,amount,currency,notes,frequency,interval,anchor_date,timezone,end_date,next_due_date,mode,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$12,$15,$16) returning id,name,type,amount::text,frequency,interval,anchor_date as "anchorDate",next_due_date as "nextDueDate",mode,status,version',[params.workspaceId,b.name.trim(),b.type,account.id,destinationId,categoryId,amount,workspace.currency,b.notes?.trim()||b.name.trim(),b.frequency,b.interval,anchor,workspace.timezone,endDate,b.mode??'manual',actor.id]);
+   const [rule]=await q(tx,'insert into recurring_rules(workspace_id,name,type,account_id,destination_account_id,category_id,amount,currency,notes,frequency,interval,anchor_date,timezone,end_date,next_due_date,mode,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$12,$15,$16) returning id,name,type,amount::text,frequency,interval,anchor_date as "anchorDate",next_due_date as "nextDueDate",mode,status,version',[params.workspaceId,b.name.trim(),b.type,account.id,destinationId,categoryId,amount,account.currency,b.notes?.trim()||b.name.trim(),b.frequency,b.interval,anchor,workspace.timezone,endDate,b.mode??'manual',actor.id]);
    await audit(tx,params.workspaceId,actor.id,'recurring-rule',rule.id,'create',null,rule);
    await scheduleRecurringWorkspace(params.workspaceId,actor.id);
    return Response.json({rule},{status:201});
@@ -521,10 +579,10 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    if(!before)return fail(404,'DELETED_TRANSACTION_NOT_FOUND','Deleted transaction not found.');
    const [reversal]=await q(tx,'select j.id from journal_entries j where j.workspace_id=$1 and j.transaction_id=$2 and j.reverses_entry_id is not null order by j.created_at desc limit 1 for update',[params.workspaceId,params.id]);
    if(reversal){
-     const lines=await q(tx,'select ledger_account_id,debit::text,credit::text,currency from journal_lines where workspace_id=$1 and entry_id=$2',[params.workspaceId,reversal.id]);
+     const lines=await q(tx,'select ledger_account_id,debit::text,credit::text,currency,coalesce(base_debit,debit)::text as base_debit,coalesce(base_credit,credit)::text as base_credit from journal_lines where workspace_id=$1 and entry_id=$2',[params.workspaceId,reversal.id]);
      const restoreId=randomUUID();
      await q(tx,'insert into journal_entries(id,workspace_id,transaction_id,effective_date,reason,reverses_entry_id,created_by) values($1,$2,$3,$4,\'restore\',$5,$6)',[restoreId,params.workspaceId,params.id,before.occurred_at,reversal.id,actor.id]);
-     for(const line of lines)await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency) values($1,$2,$3,$4,$5,$6)',[params.workspaceId,restoreId,line.ledger_account_id,line.credit,line.debit,line.currency]);
+     for(const line of lines)await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency,base_debit,base_credit) values($1,$2,$3,$4,$5,$6,$7,$8)',[params.workspaceId,restoreId,line.ledger_account_id,line.credit,line.debit,line.currency,line.base_credit,line.base_debit]);
    }
    const [restored]=await q(tx,'update transactions set deleted_at=null,deleted_by=null,updated_by=$1,updated_at=now(),version=version+1 where workspace_id=$2 and id=$3 returning id,type,category_id as "categoryId",merchant,version',[actor.id,params.workspaceId,params.id]);
    await dirtyUnusualBaselines(tx,params.workspaceId,before.category_id,before.currency,before.type,String(before.occurred_at).slice(0,10));
@@ -582,6 +640,6 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
  }))
  .get('/api/workspaces/:workspaceId/summary',async({request,params})=>withWorkspace(request,params.workspaceId,async(tx)=>{
    const u=new URL(request.url),from=u.searchParams.get('from')??'0001-01-01',to=u.searchParams.get('to')??'9999-12-31';isoDate(from);isoDate(to);
-   const [row]=await q(tx,"select coalesce((select sum(l.debit-l.credit) from accounts a join journal_lines l on l.workspace_id=a.workspace_id and l.ledger_account_id=a.ledger_account_id where a.workspace_id=$1 and a.archived_at is null and a.deleted_at is null),0)::text as balance,coalesce(sum(case when type='income' then amount else 0 end),0)::text as income,coalesce(sum(case when type='expense' then amount else 0 end),0)::text as expense,(coalesce(sum(case when type='income' then amount else 0 end),0)-coalesce(sum(case when type='expense' then amount else 0 end),0))::text as \"netChange\" from transactions where workspace_id=$1 and deleted_at is null and occurred_at between $2::date and $3::date",[params.workspaceId,from,to]);
+   const [row]=await q(tx,"select coalesce((select sum(coalesce(l.base_debit,l.debit)-coalesce(l.base_credit,l.credit)) from accounts a join journal_lines l on l.workspace_id=a.workspace_id and l.ledger_account_id=a.ledger_account_id where a.workspace_id=$1 and a.archived_at is null and a.deleted_at is null),0)::text as balance,coalesce(sum(case when type='income' then coalesce(base_amount,amount) else 0 end),0)::text as income,coalesce(sum(case when type='expense' then coalesce(base_amount,amount) else 0 end),0)::text as expense,(coalesce(sum(case when type='income' then coalesce(base_amount,amount) else 0 end),0)-coalesce(sum(case when type='expense' then coalesce(base_amount,amount) else 0 end),0))::text as \"netChange\" from transactions where workspace_id=$1 and deleted_at is null and occurred_at between $2::date and $3::date",[params.workspaceId,from,to]);
    return row;
  }));

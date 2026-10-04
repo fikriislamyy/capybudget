@@ -190,6 +190,20 @@
       "when": 1790970000010,
       "tag": "0026_bill_group_forecast",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790970000011,
+      "tag": "0027_tracking_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790970000012,
+      "tag": "0028_tracking_v2_history",
+      "breakpoints": true
     }
   ]
 }

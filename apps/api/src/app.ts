@@ -7,6 +7,7 @@ import { privacyRoutes } from './privacy/routes';
 import { securityRoutes } from './security/routes';
 import { guardAuthRequest } from './auth/rate-limit';
 import { trackingRoutes } from './tracking/routes';
+import { trackingV2Routes } from './tracking/v2/routes';
 import { personalFinanceRoutes } from './personal-finance/routes';
 import { businessRoutes } from './business/routes';
 import { assistantRoutes } from './assistant/routes';
@@ -37,6 +38,7 @@ export const app = new Elysia()
   .use(securityRoutes)
   .use(privacyRoutes)
   .use(trackingRoutes)
+  .use(trackingV2Routes)
   .use(notificationRoutes)
   .use(uxRoutes)
   .use(personalFinanceRoutes)

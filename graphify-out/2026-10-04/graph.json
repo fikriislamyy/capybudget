@@ -2309,7 +2309,7 @@
       "file_type": "code",
       "norm_label": "dispatchcapturejobs()",
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L52"
+      "source_location": "L44"
     },
     {
       "id": "apps_api_src_tracking_v2_worker_processreceipt",
@@ -2345,7 +2345,7 @@
       "file_type": "code",
       "norm_label": "refreshcapturemaintenance()",
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L65"
+      "source_location": "L57"
     },
     {
       "id": "apps_api_src_tracking_worker_scancapture",
@@ -59117,7 +59117,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L54",
+      "source_location": "L46",
       "weight": 1.0
     },
     {
@@ -59213,7 +59213,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L68",
+      "source_location": "L60",
       "weight": 1.0
     },
     {
@@ -59225,7 +59225,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L70",
+      "source_location": "L62",
       "weight": 1.0
     },
     {
@@ -59237,7 +59237,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L74",
+      "source_location": "L66",
       "weight": 1.0
     },
     {
@@ -59249,7 +59249,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L75",
+      "source_location": "L67",
       "weight": 1.0
     },
     {
@@ -62344,7 +62344,7 @@
       "context": "import",
       "deferred": true,
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L53",
+      "source_location": "L45",
       "weight": 1.0
     },
     {
@@ -100811,7 +100811,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L52",
+      "source_location": "L44",
       "weight": 1.0
     },
     {
@@ -100822,7 +100822,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/api/src/tracking/v2/worker.ts",
-      "source_location": "L65",
+      "source_location": "L57",
       "weight": 1.0
     },
     {

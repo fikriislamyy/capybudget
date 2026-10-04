@@ -19,7 +19,7 @@ export async function deletionPreview(userId: string) {
         await tx`select capybudget_other_members(${ws.id})::int as count`;
       if (shared!.count) blocked = true;
       const [count] =
-        await tx`select (select count(*) from attachments where workspace_id=${ws.id})+(select count(*) from business_documents where workspace_id=${ws.id})+(select count(*) from report_exports where workspace_id=${ws.id} and object_key is not null) as count`;
+        await tx`select (select count(*) from attachments where workspace_id=${ws.id})+(select count(*) from business_documents where workspace_id=${ws.id})+(select count(*) from report_exports where workspace_id=${ws.id} and object_key is not null)+(select count(*) from import_jobs where workspace_id=${ws.id} and object_key is not null)+(select count(*) from ocr_jobs where workspace_id=${ws.id} and transaction_id is null and status<>'expired') as count`;
       files += Number(count!.count);
     }
     const scopeVersion = createHash("sha256")
@@ -96,7 +96,7 @@ export async function requestDeletion(
     for (const ws of preview.workspaces) {
       await tx`select set_config('app.workspace_id',${ws.id},true)`;
       const rows =
-        await tx`select object_key from attachments where workspace_id=${ws.id} union select object_key from business_documents where workspace_id=${ws.id} union select object_key from report_exports where workspace_id=${ws.id} and object_key is not null`;
+        await tx`select object_key from attachments where workspace_id=${ws.id} union select object_key from import_jobs where workspace_id=${ws.id} and object_key is not null union select object_key from ocr_jobs where workspace_id=${ws.id} union select object_key from business_documents where workspace_id=${ws.id} union select object_key from report_exports where workspace_id=${ws.id} and object_key is not null`;
       rows.forEach((r) => objects.add(r.object_key));
       (
         await tx`select object_key from report_export_cleanup where object_key like ${"%/" + ws.id + "/%"}`

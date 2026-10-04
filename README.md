@@ -9,6 +9,10 @@ Personal finance application scaffold using SvelteKit, TypeScript, Tailwind CSS,
 
 The deployment configuration examples are reference templates; complete the documented preparation before using them.
 
+## Core Tracking V2
+
+[Setup and usage guide](docs/core-tracking-v2.md): multi-currency, splits, bulk actions, mutasi uploads and local receipt OCR.
+
 ## Local requirements
 
 - Bun 1.2+
