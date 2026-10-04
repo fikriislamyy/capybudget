@@ -13428,7 +13428,7 @@
       "node_kind": "heading",
       "norm_label": "10. common problems",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L305"
+      "source_location": "L306"
     },
     {
       "id": "docs_deployment_jenkins_1_recommended_layout",
@@ -13464,7 +13464,7 @@
       "node_kind": "heading",
       "norm_label": "4. configure production secrets on the vps",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L95"
+      "source_location": "L96"
     },
     {
       "id": "docs_deployment_jenkins_6_start_jenkins_locally_named_jenkins",
@@ -13476,7 +13476,7 @@
       "node_kind": "heading",
       "norm_label": "6. start jenkins locally, named `jenkins`",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L205"
+      "source_location": "L206"
     },
     {
       "id": "docs_deployment_jenkins_7_create_the_jenkins_job",
@@ -13488,7 +13488,7 @@
       "node_kind": "heading",
       "norm_label": "7. create the jenkins job",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L229"
+      "source_location": "L230"
     },
     {
       "id": "docs_deployment_jenkins_8_verify_the_actual_application",
@@ -13500,7 +13500,7 @@
       "node_kind": "heading",
       "norm_label": "8. verify the actual application",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L260"
+      "source_location": "L261"
     },
     {
       "id": "docs_deployment_jenkins_9_backup_rollback_and_maintenance",
@@ -13512,7 +13512,7 @@
       "node_kind": "heading",
       "norm_label": "9. backup, rollback and maintenance",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L287"
+      "source_location": "L288"
     },
     {
       "id": "docs_deployment_jenkins_capybudget_deployment_local_jenkins_one_vps",
@@ -13536,7 +13536,7 @@
       "node_kind": "heading",
       "norm_label": "first deployment",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L242"
+      "source_location": "L243"
     },
     {
       "id": "docs_deployment_jenkins_ssh_credentials",
@@ -13548,7 +13548,7 @@
       "node_kind": "heading",
       "norm_label": "ssh credentials",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L218"
+      "source_location": "L219"
     },
     {
       "id": "agents_skills_ui_ux_pro_max_scripts_design_system_rationale_154",
@@ -19344,7 +19344,7 @@
       "file_type": "concept",
       "norm_label": "@sveltejs/kit",
       "source_file": "apps/web/package.json",
-      "source_location": "L16"
+      "source_location": "L15"
     },
     {
       "id": "ref_tailwindcss_vite",
@@ -19355,7 +19355,7 @@
       "file_type": "concept",
       "norm_label": "@tailwindcss/vite",
       "source_file": "apps/web/package.json",
-      "source_location": "L18"
+      "source_location": "L17"
     },
     {
       "id": "ref_vite",
@@ -19366,7 +19366,7 @@
       "file_type": "concept",
       "norm_label": "vite",
       "source_file": "apps/web/package.json",
-      "source_location": "L26"
+      "source_location": "L25"
     },
     {
       "id": "ref_vite_plugin_pwa",
@@ -19377,7 +19377,7 @@
       "file_type": "concept",
       "norm_label": "vite-plugin-pwa",
       "source_file": "apps/web/package.json",
-      "source_location": "L27"
+      "source_location": "L26"
     },
     {
       "id": "apps_web_playwright_config",
@@ -19498,7 +19498,7 @@
       "file_type": "concept",
       "norm_label": "@axe-core/playwright",
       "source_file": "apps/web/package.json",
-      "source_location": "L30"
+      "source_location": "L29"
     },
     {
       "id": "ref_playwright_test",
@@ -19509,7 +19509,7 @@
       "file_type": "concept",
       "norm_label": "@playwright/test",
       "source_file": "apps/web/package.json",
-      "source_location": "L35"
+      "source_location": "L34"
     },
     {
       "id": "prd_6_1_accounts_and_onboarding_auth",
@@ -20440,7 +20440,7 @@
       "node_kind": "heading",
       "norm_label": "10. monitor credits and prepare for expiry",
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L167"
+      "source_location": "L169"
     },
     {
       "id": "docs_free_vps_setup_1_understand_the_aws_free_plan_and_choose_one_server",
@@ -20512,7 +20512,7 @@
       "node_kind": "heading",
       "norm_label": "6. create the deployment account",
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L95"
+      "source_location": "L97"
     },
     {
       "id": "docs_free_vps_setup_7_add_dns_records",
@@ -20524,7 +20524,7 @@
       "node_kind": "heading",
       "norm_label": "7. add dns records",
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L119"
+      "source_location": "L121"
     },
     {
       "id": "docs_free_vps_setup_8_configure_storage_and_outbound_email",
@@ -20536,7 +20536,7 @@
       "node_kind": "heading",
       "norm_label": "8. configure storage and outbound email",
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L139"
+      "source_location": "L141"
     },
     {
       "id": "docs_free_vps_setup_9_deploy_and_prove_recovery",
@@ -20548,7 +20548,7 @@
       "node_kind": "heading",
       "norm_label": "9. deploy and prove recovery",
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L157"
+      "source_location": "L159"
     },
     {
       "id": "docs_free_vps_setup_aws_ec2_free_tier_vps_setup_for_capybudget",
@@ -22264,7 +22264,7 @@
       "file_type": "concept",
       "norm_label": "lucide-svelte",
       "source_file": "apps/web/package.json",
-      "source_location": "L23"
+      "source_location": "L22"
     },
     {
       "id": "ref_svelte",
@@ -28665,7 +28665,7 @@
       "node_kind": "heading",
       "norm_label": "3.2 adopt the reference files",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L71"
+      "source_location": "L72"
     },
     {
       "id": "docs_deployment_jenkins_3_3_validate_before_deploying",
@@ -28677,7 +28677,7 @@
       "node_kind": "heading",
       "norm_label": "3.3 validate before deploying",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L85"
+      "source_location": "L86"
     },
     {
       "id": "docs_deployment_jenkins_3_prepare_the_repository_once_locally",
@@ -28701,7 +28701,7 @@
       "node_kind": "heading",
       "norm_label": "5. set up real email and off-host backups",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L177"
+      "source_location": "L178"
     },
     {
       "id": "docs_deployment_jenkins_email",
@@ -28713,7 +28713,7 @@
       "node_kind": "heading",
       "norm_label": "email",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L179"
+      "source_location": "L180"
     },
     {
       "id": "docs_deployment_jenkins_off_host_s3_backup_destination",
@@ -28725,7 +28725,7 @@
       "node_kind": "heading",
       "norm_label": "off-host s3 backup destination",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L191"
+      "source_location": "L192"
     },
     {
       "id": "agents_skills_ui_styling_scripts_tests_test_tailwind_config_gen_rationale_138",
@@ -29909,7 +29909,7 @@
       "file_type": "concept",
       "norm_label": "better-auth",
       "source_file": "apps/web/package.json",
-      "source_location": "L20"
+      "source_location": "L19"
     },
     {
       "id": "apps_web_package_json_ref_postgres",
@@ -29964,7 +29964,7 @@
       "file_type": "concept",
       "norm_label": "echarts",
       "source_file": "apps/web/package.json",
-      "source_location": "L22"
+      "source_location": "L21"
     },
     {
       "id": "ref_fontsource_variable_fredoka",
@@ -29975,7 +29975,7 @@
       "file_type": "concept",
       "norm_label": "@fontsource-variable/fredoka",
       "source_file": "apps/web/package.json",
-      "source_location": "L31"
+      "source_location": "L30"
     },
     {
       "id": "ref_fontsource_variable_nunito_sans",
@@ -29986,7 +29986,7 @@
       "file_type": "concept",
       "norm_label": "@fontsource-variable/nunito-sans",
       "source_file": "apps/web/package.json",
-      "source_location": "L32"
+      "source_location": "L31"
     },
     {
       "id": "ref_internationalized_date",
@@ -29997,7 +29997,7 @@
       "file_type": "concept",
       "norm_label": "@internationalized/date",
       "source_file": "apps/web/package.json",
-      "source_location": "L33"
+      "source_location": "L32"
     },
     {
       "id": "ref_qrcode",
@@ -30008,7 +30008,7 @@
       "file_type": "concept",
       "norm_label": "qrcode",
       "source_file": "apps/web/package.json",
-      "source_location": "L24"
+      "source_location": "L23"
     },
     {
       "id": "ref_shadcn_svelte",
@@ -30044,15 +30044,15 @@
       "source_location": "L43"
     },
     {
-      "id": "ref_sveltejs_adapter_auto",
-      "label": "@sveltejs/adapter-auto",
+      "id": "ref_sveltejs_adapter_node",
+      "label": "@sveltejs/adapter-node",
       "_origin": "ast",
       "community": 29,
       "community_name": "web/package.json",
       "file_type": "concept",
-      "norm_label": "@sveltejs/adapter-auto",
+      "norm_label": "@sveltejs/adapter-node",
       "source_file": "apps/web/package.json",
-      "source_location": "L15"
+      "source_location": "L35"
     },
     {
       "id": "ref_sveltejs_vite_plugin_svelte",
@@ -30063,7 +30063,7 @@
       "file_type": "concept",
       "norm_label": "@sveltejs/vite-plugin-svelte",
       "source_file": "apps/web/package.json",
-      "source_location": "L17"
+      "source_location": "L16"
     },
     {
       "id": "ref_tailwind_variants",
@@ -30085,7 +30085,7 @@
       "file_type": "concept",
       "norm_label": "tailwindcss",
       "source_file": "apps/web/package.json",
-      "source_location": "L25"
+      "source_location": "L24"
     },
     {
       "id": "ref_tanstack_svelte_query",
@@ -30096,7 +30096,7 @@
       "file_type": "concept",
       "norm_label": "@tanstack/svelte-query",
       "source_file": "apps/web/package.json",
-      "source_location": "L19"
+      "source_location": "L18"
     },
     {
       "id": "ref_tw_animate_css",
@@ -35928,7 +35928,7 @@
       "file_type": "concept",
       "norm_label": "bits-ui",
       "source_file": "apps/web/package.json",
-      "source_location": "L21"
+      "source_location": "L20"
     },
     {
       "id": "agents_skills_design_system_templates_design_tokens_starter_0_type",
@@ -40785,7 +40785,7 @@
       "file_type": "code",
       "norm_label": "devdependencies",
       "source_file": "apps/web/package.json",
-      "source_location": "L29"
+      "source_location": "L28"
     },
     {
       "id": "apps_web_package_devdependencies_axe_core_playwright",
@@ -40796,7 +40796,7 @@
       "file_type": "code",
       "norm_label": "@axe-core/playwright",
       "source_file": "apps/web/package.json",
-      "source_location": "L30"
+      "source_location": "L29"
     },
     {
       "id": "apps_web_package_devdependencies_cn",
@@ -40818,7 +40818,7 @@
       "file_type": "code",
       "norm_label": "@fontsource-variable/fredoka",
       "source_file": "apps/web/package.json",
-      "source_location": "L31"
+      "source_location": "L30"
     },
     {
       "id": "apps_web_package_devdependencies_fontsource_variable_nunito_sans",
@@ -40829,7 +40829,7 @@
       "file_type": "code",
       "norm_label": "@fontsource-variable/nunito-sans",
       "source_file": "apps/web/package.json",
-      "source_location": "L32"
+      "source_location": "L31"
     },
     {
       "id": "apps_web_package_devdependencies_internationalized_date",
@@ -40840,7 +40840,7 @@
       "file_type": "code",
       "norm_label": "@internationalized/date",
       "source_file": "apps/web/package.json",
-      "source_location": "L33"
+      "source_location": "L32"
     },
     {
       "id": "apps_web_package_devdependencies_lucide_svelte",
@@ -40851,7 +40851,7 @@
       "file_type": "code",
       "norm_label": "@lucide/svelte",
       "source_file": "apps/web/package.json",
-      "source_location": "L34"
+      "source_location": "L33"
     },
     {
       "id": "apps_web_package_devdependencies_playwright_test",
@@ -40862,7 +40862,7 @@
       "file_type": "code",
       "norm_label": "@playwright/test",
       "source_file": "apps/web/package.json",
-      "source_location": "L35"
+      "source_location": "L34"
     },
     {
       "id": "apps_web_package_devdependencies_postgres",
@@ -40907,6 +40907,17 @@
       "norm_label": "svelte-check",
       "source_file": "apps/web/package.json",
       "source_location": "L43"
+    },
+    {
+      "id": "apps_web_package_devdependencies_sveltejs_adapter_node",
+      "label": "@sveltejs/adapter-node",
+      "_origin": "ast",
+      "community": 74,
+      "community_name": "devDependencies",
+      "file_type": "code",
+      "norm_label": "@sveltejs/adapter-node",
+      "source_file": "apps/web/package.json",
+      "source_location": "L35"
     },
     {
       "id": "apps_web_package_devdependencies_tailwind_variants",
@@ -41181,7 +41192,7 @@
       "file_type": "code",
       "norm_label": "better-auth",
       "source_file": "apps/web/package.json",
-      "source_location": "L20"
+      "source_location": "L19"
     },
     {
       "id": "apps_web_package_dependencies_bits_ui",
@@ -41192,7 +41203,7 @@
       "file_type": "code",
       "norm_label": "bits-ui",
       "source_file": "apps/web/package.json",
-      "source_location": "L21"
+      "source_location": "L20"
     },
     {
       "id": "apps_web_package_dependencies_capybudget_api",
@@ -41214,7 +41225,7 @@
       "file_type": "code",
       "norm_label": "echarts",
       "source_file": "apps/web/package.json",
-      "source_location": "L22"
+      "source_location": "L21"
     },
     {
       "id": "apps_web_package_dependencies_elysiajs_eden",
@@ -41236,7 +41247,7 @@
       "file_type": "code",
       "norm_label": "lucide-svelte",
       "source_file": "apps/web/package.json",
-      "source_location": "L23"
+      "source_location": "L22"
     },
     {
       "id": "apps_web_package_dependencies_qrcode",
@@ -41247,7 +41258,7 @@
       "file_type": "code",
       "norm_label": "qrcode",
       "source_file": "apps/web/package.json",
-      "source_location": "L24"
+      "source_location": "L23"
     },
     {
       "id": "apps_web_package_dependencies_simplewebauthn_browser",
@@ -41261,17 +41272,6 @@
       "source_location": "L14"
     },
     {
-      "id": "apps_web_package_dependencies_sveltejs_adapter_auto",
-      "label": "@sveltejs/adapter-auto",
-      "_origin": "ast",
-      "community": 76,
-      "community_name": "dependencies",
-      "file_type": "code",
-      "norm_label": "@sveltejs/adapter-auto",
-      "source_file": "apps/web/package.json",
-      "source_location": "L15"
-    },
-    {
       "id": "apps_web_package_dependencies_sveltejs_kit",
       "label": "@sveltejs/kit",
       "_origin": "ast",
@@ -41280,7 +41280,7 @@
       "file_type": "code",
       "norm_label": "@sveltejs/kit",
       "source_file": "apps/web/package.json",
-      "source_location": "L16"
+      "source_location": "L15"
     },
     {
       "id": "apps_web_package_dependencies_sveltejs_vite_plugin_svelte",
@@ -41291,7 +41291,7 @@
       "file_type": "code",
       "norm_label": "@sveltejs/vite-plugin-svelte",
       "source_file": "apps/web/package.json",
-      "source_location": "L17"
+      "source_location": "L16"
     },
     {
       "id": "apps_web_package_dependencies_tailwindcss",
@@ -41302,7 +41302,7 @@
       "file_type": "code",
       "norm_label": "tailwindcss",
       "source_file": "apps/web/package.json",
-      "source_location": "L25"
+      "source_location": "L24"
     },
     {
       "id": "apps_web_package_dependencies_tailwindcss_vite",
@@ -41313,7 +41313,7 @@
       "file_type": "code",
       "norm_label": "@tailwindcss/vite",
       "source_file": "apps/web/package.json",
-      "source_location": "L18"
+      "source_location": "L17"
     },
     {
       "id": "apps_web_package_dependencies_tanstack_svelte_query",
@@ -41324,7 +41324,7 @@
       "file_type": "code",
       "norm_label": "@tanstack/svelte-query",
       "source_file": "apps/web/package.json",
-      "source_location": "L19"
+      "source_location": "L18"
     },
     {
       "id": "apps_web_package_dependencies_vite",
@@ -41335,7 +41335,7 @@
       "file_type": "code",
       "norm_label": "vite",
       "source_file": "apps/web/package.json",
-      "source_location": "L26"
+      "source_location": "L25"
     },
     {
       "id": "apps_web_package_dependencies_vite_plugin_pwa",
@@ -41346,7 +41346,7 @@
       "file_type": "code",
       "norm_label": "vite-plugin-pwa",
       "source_file": "apps/web/package.json",
-      "source_location": "L27"
+      "source_location": "L26"
     },
     {
       "id": "apps_api_src_operations_backup",
@@ -67147,7 +67147,7 @@
     },
     {
       "source": "apps_web_package",
-      "target": "ref_sveltejs_adapter_auto",
+      "target": "ref_sveltejs_kit",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -67159,7 +67159,7 @@
     },
     {
       "source": "apps_web_package",
-      "target": "ref_sveltejs_kit",
+      "target": "ref_sveltejs_vite_plugin_svelte",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -67171,7 +67171,7 @@
     },
     {
       "source": "apps_web_package",
-      "target": "ref_sveltejs_vite_plugin_svelte",
+      "target": "ref_tailwindcss_vite",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -67183,7 +67183,7 @@
     },
     {
       "source": "apps_web_package",
-      "target": "ref_tailwindcss_vite",
+      "target": "ref_tanstack_svelte_query",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -67195,7 +67195,7 @@
     },
     {
       "source": "apps_web_package",
-      "target": "ref_tanstack_svelte_query",
+      "target": "apps_web_package_json_ref_better_auth",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -67207,7 +67207,7 @@
     },
     {
       "source": "apps_web_package",
-      "target": "apps_web_package_json_ref_better_auth",
+      "target": "ref_bits_ui",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -67219,7 +67219,7 @@
     },
     {
       "source": "apps_web_package",
-      "target": "ref_bits_ui",
+      "target": "ref_echarts",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -67231,18 +67231,6 @@
     },
     {
       "source": "apps_web_package",
-      "target": "ref_echarts",
-      "relation": "imports",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "import",
-      "source_file": "apps/web/package.json",
-      "source_location": "L22",
-      "weight": 1.0
-    },
-    {
-      "source": "apps_web_package",
       "target": "ref_qrcode",
       "relation": "imports",
       "_origin": "ast",
@@ -67250,7 +67238,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "apps/web/package.json",
-      "source_location": "L24",
+      "source_location": "L23",
       "weight": 1.0
     },
     {
@@ -67262,7 +67250,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "apps/web/package.json",
-      "source_location": "L25",
+      "source_location": "L24",
       "weight": 1.0
     },
     {
@@ -67274,7 +67262,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "apps/web/package.json",
-      "source_location": "L26",
+      "source_location": "L25",
       "weight": 1.0
     },
     {
@@ -67286,7 +67274,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "apps/web/package.json",
-      "source_location": "L27",
+      "source_location": "L26",
       "weight": 1.0
     },
     {
@@ -67298,7 +67286,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "apps/web/package.json",
-      "source_location": "L30",
+      "source_location": "L29",
       "weight": 1.0
     },
     {
@@ -67310,7 +67298,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "apps/web/package.json",
-      "source_location": "L31",
+      "source_location": "L30",
       "weight": 1.0
     },
     {
@@ -67322,7 +67310,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "apps/web/package.json",
-      "source_location": "L32",
+      "source_location": "L31",
       "weight": 1.0
     },
     {
@@ -67334,7 +67322,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "apps/web/package.json",
-      "source_location": "L33",
+      "source_location": "L32",
       "weight": 1.0
     },
     {
@@ -67346,12 +67334,24 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "apps/web/package.json",
-      "source_location": "L34",
+      "source_location": "L33",
       "weight": 1.0
     },
     {
       "source": "apps_web_package",
       "target": "ref_playwright_test",
+      "relation": "imports",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "import",
+      "source_file": "apps/web/package.json",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_web_package",
+      "target": "ref_sveltejs_adapter_node",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -73635,7 +73635,7 @@
     },
     {
       "source": "apps_web_svelte_config",
-      "target": "ref_sveltejs_adapter_auto",
+      "target": "ref_sveltejs_adapter_node",
       "relation": "imports_from",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -97932,7 +97932,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/web/package.json",
-      "source_location": "L29",
+      "source_location": "L28",
       "weight": 1.0
     },
     {
@@ -98003,7 +98003,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_sveltejs_adapter_auto",
+      "target": "apps_web_package_dependencies_sveltejs_kit",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98014,7 +98014,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_sveltejs_kit",
+      "target": "apps_web_package_dependencies_sveltejs_vite_plugin_svelte",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98025,7 +98025,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_sveltejs_vite_plugin_svelte",
+      "target": "apps_web_package_dependencies_tailwindcss_vite",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98036,7 +98036,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_tailwindcss_vite",
+      "target": "apps_web_package_dependencies_tanstack_svelte_query",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98047,7 +98047,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_tanstack_svelte_query",
+      "target": "apps_web_package_dependencies_better_auth",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98058,7 +98058,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_better_auth",
+      "target": "apps_web_package_dependencies_bits_ui",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98069,7 +98069,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_bits_ui",
+      "target": "apps_web_package_dependencies_echarts",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98080,7 +98080,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_echarts",
+      "target": "apps_web_package_dependencies_lucide_svelte",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98091,7 +98091,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_lucide_svelte",
+      "target": "apps_web_package_dependencies_qrcode",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98102,7 +98102,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_qrcode",
+      "target": "apps_web_package_dependencies_tailwindcss",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98113,7 +98113,7 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_tailwindcss",
+      "target": "apps_web_package_dependencies_vite",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -98124,24 +98124,13 @@
     },
     {
       "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_vite",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "apps/web/package.json",
-      "source_location": "L26",
-      "weight": 1.0
-    },
-    {
-      "source": "apps_web_package_dependencies",
       "target": "apps_web_package_dependencies_vite_plugin_pwa",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/web/package.json",
-      "source_location": "L27",
+      "source_location": "L26",
       "weight": 1.0
     },
     {
@@ -98152,7 +98141,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/web/package.json",
-      "source_location": "L30",
+      "source_location": "L29",
       "weight": 1.0
     },
     {
@@ -98163,7 +98152,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/web/package.json",
-      "source_location": "L31",
+      "source_location": "L30",
       "weight": 1.0
     },
     {
@@ -98174,7 +98163,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/web/package.json",
-      "source_location": "L32",
+      "source_location": "L31",
       "weight": 1.0
     },
     {
@@ -98185,7 +98174,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/web/package.json",
-      "source_location": "L33",
+      "source_location": "L32",
       "weight": 1.0
     },
     {
@@ -98196,12 +98185,23 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "apps/web/package.json",
-      "source_location": "L34",
+      "source_location": "L33",
       "weight": 1.0
     },
     {
       "source": "apps_web_package_devdependencies",
       "target": "apps_web_package_devdependencies_playwright_test",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/web/package.json",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "apps_web_package_devdependencies",
+      "target": "apps_web_package_devdependencies_sveltejs_adapter_node",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -100638,7 +100638,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L71",
+      "source_location": "L72",
       "weight": 1.0
     },
     {
@@ -100649,7 +100649,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L85",
+      "source_location": "L86",
       "weight": 1.0
     },
     {
@@ -100660,7 +100660,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L179",
+      "source_location": "L180",
       "weight": 1.0
     },
     {
@@ -100671,7 +100671,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L191",
+      "source_location": "L192",
       "weight": 1.0
     },
     {
@@ -100682,7 +100682,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L218",
+      "source_location": "L219",
       "weight": 1.0
     },
     {
@@ -100693,7 +100693,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L242",
+      "source_location": "L243",
       "weight": 1.0
     },
     {
@@ -100704,7 +100704,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L177",
+      "source_location": "L178",
       "weight": 1.0
     },
     {
@@ -100715,7 +100715,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L205",
+      "source_location": "L206",
       "weight": 1.0
     },
     {
@@ -100726,7 +100726,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L229",
+      "source_location": "L230",
       "weight": 1.0
     },
     {
@@ -100737,7 +100737,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L260",
+      "source_location": "L261",
       "weight": 1.0
     },
     {
@@ -100748,7 +100748,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L287",
+      "source_location": "L288",
       "weight": 1.0
     },
     {
@@ -100759,7 +100759,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L305",
+      "source_location": "L306",
       "weight": 1.0
     },
     {
@@ -100803,7 +100803,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L95",
+      "source_location": "L96",
       "weight": 1.0
     },
     {
@@ -100825,7 +100825,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L119",
+      "source_location": "L121",
       "weight": 1.0
     },
     {
@@ -100836,7 +100836,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L139",
+      "source_location": "L141",
       "weight": 1.0
     },
     {
@@ -100847,7 +100847,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L157",
+      "source_location": "L159",
       "weight": 1.0
     },
     {
@@ -100858,7 +100858,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L167",
+      "source_location": "L169",
       "weight": 1.0
     },
     {
@@ -100924,7 +100924,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/free-vps-setup.md",
-      "source_location": "L95",
+      "source_location": "L97",
       "weight": 1.0
     },
     {
@@ -118504,7 +118504,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L291",
+      "source_location": "L292",
       "weight": 1.0
     },
     {
@@ -119326,7 +119326,7 @@
       "confidence_score": 0.95,
       "context": "ensureBackupBucket()",
       "source_file": "docs/deployment-jenkins.md",
-      "source_location": "L198",
+      "source_location": "L199",
       "weight": 1.0
     },
     {
@@ -119469,5 +119469,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "fd974928d9f2909f254b9fb4c3869e8ae02075f0"
+  "built_at_commit": "d7cd2e010d6b0ec133dffa6538df9db2aa90f12e"
 }

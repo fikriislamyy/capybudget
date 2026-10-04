@@ -48,13 +48,14 @@ Start with DNS-only records if using Cloudflare. The sample trusts exactly one p
 
 ### 3.1 Configure the production SvelteKit adapter
 
-The project currently uses `@sveltejs/adapter-auto`. Install the Node adapter:
+The repository now uses the Node adapter. Keep SvelteKit on the compatible 2.x release used by this app; installing an unrestricted `latest` adapter can pull in SvelteKit 3, which requires an application migration. For a checkout that still needs this preparation:
 
 ```sh
-bun add --cwd apps/web -d @sveltejs/adapter-node
+bun add --cwd apps/web @sveltejs/kit@2.70.3
+bun add --cwd apps/web -d @sveltejs/adapter-node@5.5.7
 ```
 
-Change only the adapter import in `apps/web/svelte.config.js`:
+Confirm `apps/web/svelte.config.js` uses this configuration:
 
 ```js
 import adapter from '@sveltejs/adapter-node';
@@ -90,7 +91,7 @@ bun run check
 bun run build
 ```
 
-Run the project's integration/browser suites against disposable test infrastructure before approving a release, never against production. Commit all required source files, including currently untracked `shared/` files, before pushing. Jenkins uploads **only committed files** using `git archive`; a working local copy is not sufficient. Do not blindly `git add .` when credentials or local tooling files may be present.
+Run the project's integration/browser suites against disposable test infrastructure before approving a release, never against production. Commit all required source files, including `shared/`, before pushing. Jenkins uploads **only committed files** using `git archive`; a working local copy is not sufficient. Do not blindly `git add .` when credentials or local tooling files may be present.
 
 ## 4. Configure production secrets on the VPS
 
@@ -303,6 +304,39 @@ For an application-only rollback **after confirming database compatibility**, ch
 Monitor disk space, memory, container restarts, queue failures, TLS renewal, SMTP limits, backup freshness and storage bills. Keep log rotation enabled. Do not prune volumes. Prune old build cache/images only after preserving the current and rollback release. Back up the local Jenkins volume securely; it contains credentials. OS/image patching and encrypted-disk configuration remain deployment responsibilities.
 
 ## 10. Common problems
+
+### Caddy fails with `failed to set up container networking: Address already in use`
+
+The original network template allowed automatic container allocation to use Caddy's fixed `172.30.0.2` address. The corrected configuration keeps automatic allocations in `172.30.0.128/25`:
+
+```yaml
+networks:
+  app:
+    ipam:
+      config: [{subnet: 172.30.0.0/24, ip_range: 172.30.0.128/25}]
+```
+
+Docker's [IPAM configuration](https://docs.docker.com/reference/compose-file/networks/#ipam) supports a separate allocation range within the subnet. Caddy keeps `172.30.0.2`, matching `TRUSTED_PROXY_IPS`. An existing Docker network must be recreated to apply this change.
+
+If the first deployment already migrated the database and started API/web, finish that failed release rather than rerunning `FIRST_DEPLOY=true`. On the VPS, find the failed release directory from the Jenkins build number; do not assume `/opt/capybudget/current` exists yet. Change into that release, edit its `docs/deployment/examples/compose.production.yml` to use the corrected network above, then:
+
+```sh
+export APP_RELEASE="$(basename "$PWD")"
+docker compose --env-file /opt/capybudget/secrets/production.env -p capybudget -f docs/deployment/examples/compose.production.yml config --quiet
+docker compose --env-file /opt/capybudget/secrets/production.env -p capybudget -f docs/deployment/examples/compose.production.yml down
+docker compose --env-file /opt/capybudget/secrets/production.env -p capybudget -f docs/deployment/examples/compose.production.yml up -d --wait --wait-timeout 180
+curl --fail --silent --show-error --retry 6 --retry-delay 5 --retry-all-errors https://capybudget.bebem.my.id/api/health
+curl --fail --silent --show-error https://api.capybudget.bebem.my.id/api/health
+curl --fail --silent --show-error --output /dev/null https://capybudget.bebem.my.id/login
+```
+
+`down` recreates containers/network and preserves named volumes; **do not add `-v`**. Only after startup and all three HTTP checks pass, record the recovered release:
+
+```sh
+ln -sfn "$PWD" /opt/capybudget/current
+```
+
+Ensure the corrected template is committed and pushed before the next Jenkins run. Subsequent deployments use `FIRST_DEPLOY=false`. If a networking error remains, inspect `docker network inspect capybudget_app` for duplicate addresses and `sudo ss -lntup` for host port 80/443 conflicts; port-bind errors and container-IP conflicts need different fixes.
 
 Documentation checks completed: both Compose templates pass configuration validation (production used dummy interpolation values and skipped secret-file resolution), the deployment script passes Bash syntax checking, and local documentation links resolve. Images have not been built or exercised on a VPS; Jenkins, SSH, SMTP, S3, HTTPS and application smoke checks must be completed in your deployment environment.
 

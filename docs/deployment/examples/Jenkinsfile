@@ -5,7 +5,7 @@ pipeline {
     booleanParam(name: 'FIRST_DEPLOY', defaultValue: false, description: 'Only for a new empty production database')
   }
   environment {
-    DEPLOY_HOST = 'REPLACE_WITH_VPS_IPV4'
+    DEPLOY_HOST = '16.176.102.58'
     DEPLOY_USER = 'deploy'
   }
   stages {

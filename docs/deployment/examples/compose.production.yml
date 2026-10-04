@@ -125,7 +125,8 @@ services:
 networks:
   app:
     ipam:
-      config: [{subnet: 172.30.0.0/24}]
+      # Keep automatic allocations away from Caddy's trusted proxy address.
+      config: [{subnet: 172.30.0.0/24, ip_range: 172.30.0.128/25}]
 volumes:
   postgres_data:
   redis_data:
