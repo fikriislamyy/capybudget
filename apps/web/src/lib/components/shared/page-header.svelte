@@ -1,13 +1,15 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import PageGuide from './page-guide.svelte';
 
   let {
     eyebrow = '',
     title,
     description = '',
     actions,
-    metadata
-  }: { eyebrow?: string; title: string; description?: string; actions?: Snippet; metadata?: Snippet } = $props();
+    metadata,
+    guidePath
+  }: { eyebrow?: string; title: string; description?: string; actions?: Snippet; metadata?: Snippet; guidePath?: string } = $props();
 </script>
 
 <div class="page-header">
@@ -19,6 +21,8 @@
   </div>
   {#if actions}<div class="actions">{@render actions()}</div>{/if}
 </div>
+
+<PageGuide pathname={guidePath} />
 
 <style>
   .page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}

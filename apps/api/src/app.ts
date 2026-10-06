@@ -1,3 +1,4 @@
+import { businessAccountingRoutes } from './business/accounting-routes';
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { openapi } from '@elysiajs/openapi';
@@ -13,6 +14,14 @@ import { netWorthRoutes } from './personal-finance/v2/net-worth';
 import { debtRoutes } from './personal-finance/v2/debts';
 import { budgetMethodRoutes } from './personal-finance/v2/budgets';
 import { personalFinanceRoutes } from './personal-finance/routes';
+import { businessTaxRoutes } from './business/tax-routes';
+import { paymentAdjustmentRoutes } from './business/payment-adjustments';
+import { payableRoutes } from './business/payables';
+import { businessAnalyticsRoutes } from './business/analytics';
+import { recurringInvoiceRoutes } from './business/recurring';
+import { businessPaymentRoutes } from './business/payments';
+import { businessDirectoryRoutes } from './business/directory';
+import { businessTeamRoutes } from './business/team';
 import { businessRoutes } from './business/routes';
 import { assistantRoutes } from './assistant/routes';
 import { reportsRoutes } from './reports/routes';
@@ -51,6 +60,15 @@ export const app = new Elysia()
   .use(subscriptionRoutes)
   .use(netWorthRoutes)
   .use(businessRoutes)
+  .use(businessTaxRoutes)
+  .use(businessTeamRoutes)
+  .use(businessAccountingRoutes)
+  .use(businessDirectoryRoutes)
+  .use(businessPaymentRoutes)
+  .use(recurringInvoiceRoutes)
+  .use(payableRoutes)
+  .use(businessAnalyticsRoutes)
+  .use(paymentAdjustmentRoutes)
   .use(assistantRoutes)
   .use(reportsRoutes)
   .all('/api/auth/*', async ({ request, server }) => {

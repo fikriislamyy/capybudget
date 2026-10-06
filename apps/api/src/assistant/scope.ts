@@ -1,3 +1,4 @@
+import { authorizeWorkspace } from '../business/permissions';
 import type { TransactionSql } from 'postgres';
 import { auth } from '../auth';
 import { client } from '../db';
@@ -35,6 +36,7 @@ export async function withAssistantScope<T>(
       return await client.begin(async tx=>{
         await q(tx,'set transaction isolation level repeatable read');
         await q(tx,"select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[session.user.id,workspaceId]);
+        await authorizeWorkspace(tx,workspaceId,session.user.id,request);
         const [workspace]=await q(tx,'select w.currency,w.timezone,w.kind from workspaces w join workspace_memberships m on m.workspace_id=w.id and m.user_id=$2 where w.id=$1 and w.archived_at is null',[workspaceId,session.user.id]);
         if(!workspace)reject(404,'WORKSPACE_NOT_FOUND','Workspace not found.');
         return run(tx,{id:session.user.id,email:session.user.email},workspace as unknown as {currency:string;timezone:string;kind:string});

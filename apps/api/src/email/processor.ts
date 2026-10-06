@@ -1,3 +1,4 @@
+import { sendInvitationEmail } from '../business/invitation-email';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { decryptEmailMessage } from './crypto';
 import { sendEmail } from './mailer';
@@ -25,6 +26,7 @@ export async function processEmailJob(job: Pick<Job<EncryptedEmailJob>, 'data' |
       if(delayed.length)return;
     }
     if(message.securityOwnerId){const [owner]=await client`select account_status,security_version from "user" where id=${message.securityOwnerId}`;if(!owner||owner.account_status!=='active'||Number(owner.security_version)!==message.securityGeneration)return;}
+    if(message.kind==='business-invitation'){await sendInvitationEmail(message,deliver);return;}
     if(message.kind==='bill-reminder'){
       const deliveryId=message.deliveryId,notificationId=message.notificationId;
       const setDelivery=async(sql:string,values:unknown[])=>client.begin(async(tx)=>{await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[message.userId,message.workspaceId]);return tx.unsafe(sql,values as never[]);});

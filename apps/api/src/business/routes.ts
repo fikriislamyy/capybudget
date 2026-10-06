@@ -1,3 +1,6 @@
+import {invoicePaymentLink} from './payment-links';
+import { recordInvoiceReceipt } from './receipts';
+import { authorizeWorkspace } from './permissions';
 import {protectedText,protectedJson,protectedContact,revealRow} from '../security/business-fields';
 import { Elysia } from 'elysia';
 import { createHash,randomUUID } from 'node:crypto';
@@ -7,6 +10,7 @@ import { client } from '../db';
 import { deleteAttachment,getAttachment,putAttachment } from '../tracking/storage';
 import { workspaceToday } from '../tracking/recurrence';
 import { addMoney,calculateInvoice,compareMoney,currencyScale,validPositiveAmount,type InvoiceLineInput } from './money';
+import { calculateTax } from './tax-money';
 import { renderInvoicePdf } from './pdf';
 import { dispatchInvoiceDeliveries } from './worker';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,dateRe=/^\d{4}-\d{2}-\d{2}$/;
@@ -22,7 +26,7 @@ function cleanAddress(value:unknown){
  for(const key of ['street','city','region','postalCode','country'])if(v[key]!=null){if(!bounded(v[key],200))reject('Address fields must be 200 characters or fewer.');out[key]=String(v[key]).trim();}
  return out;
 }
-function recipient(value:unknown,complete=false){
+export function recipient(value:unknown,complete=false){
  if(!value||typeof value!=='object'||Array.isArray(value))reject('Enter recipient details.');
  const v=value as Record<string,unknown>,name=typeof v.name==='string'?v.name.trim():'',mail=typeof v.email==='string'?v.email.trim():'';
  if(name.length>200||(complete&&!name))reject('Enter a recipient name up to 200 characters.');
@@ -31,41 +35,84 @@ function recipient(value:unknown,complete=false){
  return {name,email:mail,address:cleanAddress(v.address),phone:bounded(v.phone,80)?v.phone.trim():'',taxId:bounded(v.taxId,100)?v.taxId.trim():''};
 }
 function mapError(e:unknown){const x=e as Error&{status?:number;code?:string};if(x.status)return fail(x.status,x.code??'REQUEST_FAILED',x.message);if(['23503','23505','23514','22P02'].includes(x.code??''))return fail(409,'DATA_CONFLICT','The record conflicts with existing finance data.');console.error('Business finance request failed',{sqlState:x.code??'unknown'});return fail(500,'INTERNAL_ERROR','The request could not be completed.');}
-async function scope<T>(request:Request,ws:string,run:(tx:TransactionSql,user:{id:string;name:string;email:string},workspace:any)=>Promise<T>):Promise<T|Response>{
+export async function scope<T>(request:Request,ws:string,run:(tx:TransactionSql,user:{id:string;name:string;email:string},workspace:any)=>Promise<T>,repeatableRead=false):Promise<T|Response>{
  if(!uuid.test(ws))return fail(400,'INVALID_WORKSPACE_ID','Workspace ID is invalid.');
  const session=await auth.api.getSession({headers:request.headers});if(!session)return fail(401,'AUTH_REQUIRED','Sign in to continue.');if(!session.user.emailVerified)return fail(403,'EMAIL_VERIFICATION_REQUIRED','Verify your email to continue.');
- try{return await client.begin(async tx=>{await q(tx,"select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[session.user.id,ws]);
+ try{return await client.begin(async tx=>{if(repeatableRead)await tx.unsafe('set transaction isolation level repeatable read');await q(tx,"select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[session.user.id,ws]);
+ await authorizeWorkspace(tx,ws,session.user.id,request);
  const [w]=await q(tx,'select w.kind,w.name,w.currency,w.timezone,p.* from workspaces w join workspace_memberships m on m.workspace_id=w.id and m.user_id=$2 left join business_profiles p on p.workspace_id=w.id where w.id=$1 and w.archived_at is null',[ws,session.user.id]);
  if(!w)reject('Workspace not found.',404,'WORKSPACE_NOT_FOUND');if(w.kind!=='business')reject('This action requires a business workspace.',403,'BUSINESS_WORKSPACE_REQUIRED');
- return run(tx,{id:session.user.id,name:session.user.name,email:session.user.email},w);}) as T|Response;}catch(e){return mapError(e);}
+ const result=await run(tx,{id:session.user.id,name:session.user.name,email:session.user.email},w);if(result instanceof Response && result.status>=400)throw result;return result;}) as T|Response;}catch(e){if(e instanceof Response)return e;return mapError(e);}
 }
 function addressReady(a:any){return !!(a&&a.street&&a.city&&a.country);}
 function sellerSnapshot(w:any){return {legalName:w.legal_name,tradingName:w.trading_name,address:w.address,contactEmail:w.contact_email,phone:w.phone,taxId:w.tax_id,logoDocumentId:w.logo_document_id};}
-async function linesFor(tx:TransactionSql,ws:string,id:string){return q(tx,'select id,position,description,quantity::text,unit_price::text as "unitPrice",discount_amount::text as "discountAmount",tax_rate::text as "taxRate",net_amount::text as "netAmount",tax_amount::text as "taxAmount",total_amount::text as "totalAmount" from invoice_lines where workspace_id=$1 and invoice_id=$2 order by position',[ws,id]);}
-async function paidFor(tx:TransactionSql,ws:string,id:string){return (await q(tx,'select coalesce(sum(amount) filter(where reversed_at is null),0)::text as amount from invoice_payments where workspace_id=$1 and invoice_id=$2',[ws,id]))[0]!.amount as string;}
-async function detail(tx:TransactionSql,ws:string,id:string):Promise<any>{
+async function linesFor(tx:TransactionSql,ws:string,id:string){return q(tx,'select id,position,description,quantity::text,unit_price::text as "unitPrice",discount_amount::text as "discountAmount",tax_rate::text as "taxRate",tax_rate_id as "taxRateId",tax_snapshot as "taxSnapshot",catalog_item_id as "catalogItemId",catalog_snapshot as "catalogSnapshot",net_amount::text as "netAmount",tax_amount::text as "taxAmount",total_amount::text as "totalAmount" from invoice_lines where workspace_id=$1 and invoice_id=$2 order by position',[ws,id]);}
+async function validateContact(tx:TransactionSql,ws:string,id:unknown){if(typeof id!=='string'||!uuid.test(id))reject('Choose a valid customer.');const [contact]=await q(tx,"select id from business_contacts where workspace_id=$1 and id=$2 and kind in ('customer','both') and archived_at is null",[ws,id]);if(!contact)reject('Customer unavailable in this business.');}
+async function paidFor(tx:TransactionSql,ws:string,id:string){return (await q(tx,'select coalesce(sum(amount-refunded_amount) filter(where reversed_at is null),0)::text as amount from invoice_payments where workspace_id=$1 and invoice_id=$2',[ws,id]))[0]!.amount as string;}
+export async function detail(tx:TransactionSql,ws:string,id:string):Promise<any>{
  if(!uuid.test(id))reject('Invoice ID is invalid.',400,'INVALID_ID');const [inv]=await q(tx,'select * from invoices where workspace_id=$1 and id=$2 and archived_at is null',[ws,id]);if(!inv)reject('Invoice not found.',404,'NOT_FOUND');
  const [paid,linesRaw,payments,deliveries,tz]=await Promise.all([paidFor(tx,ws,id),linesFor(tx,ws,id),
- q(tx,'select id,amount::text,currency,paid_on as "paidOn",reference,reversed_at as "reversedAt",reversal_reason as "reversalReason" from invoice_payments where workspace_id=$1 and invoice_id=$2 order by paid_on desc',[ws,id]),
- q(tx,'select id,state,attempts,error_code as "errorCode",accepted_at as "acceptedAt",created_at as "createdAt" from invoice_deliveries where workspace_id=$1 and invoice_id=$2 order by created_at desc limit 20',[ws,id]),
+ q(tx,'select id,amount::text,refunded_amount::text as "refundedAmount",currency,paid_on as "paidOn",reference,reversed_at as "reversedAt",reversal_reason as "reversalReason" from invoice_payments where workspace_id=$1 and invoice_id=$2 order by paid_on desc',[ws,id]),
+ q(tx,'select id,purpose,state,attempts,error_code as "errorCode",accepted_at as "acceptedAt",created_at as "createdAt" from invoice_deliveries where workspace_id=$1 and invoice_id=$2 order by created_at desc limit 20',[ws,id]),
  q(tx,'select timezone from workspaces where id=$1',[ws])]);
  const scale=Number(inv.currency_scale),outstanding=compareMoney(String(inv.total),paid,scale)<=0?'0':addMoney(String(inv.total),'-'+paid,scale),today=workspaceToday(tz[0]!.timezone);
- const status=inv.state==='draft'?'draft':inv.state==='void'?'void':outstanding==='0'?'paid':compareMoney(paid,'0',scale)>0?'partially_paid':inv.due_date<today?'overdue':inv.first_sent_at?'sent':'issued';
- return {...inv,issueDate:inv.issue_date,dueDate:inv.due_date,expectedPaymentOn:inv.expected_payment_on,expectedAccountId:inv.expected_account_id,subtotal:String(inv.subtotal),discountTotal:String(inv.discount_total),taxTotal:String(inv.tax_total),total:String(inv.total),sellerSnapshot:inv.seller_snapshot,recipientSnapshot:inv.recipient_snapshot,paidAmount:paid,outstanding,status,lines:linesRaw as any[],payments,deliveries};
+ const status=inv.state==='draft'?'draft':inv.state==='void'?'void':outstanding==='0'?'paid':inv.due_date<today?'overdue':compareMoney(paid,'0',scale)>0?'partially_paid':inv.first_sent_at?'sent':'issued';
+ const paymentLink=inv.state==='issued'?await invoicePaymentLink(tx,ws,id):null;
+ return {...inv,paymentLinkAvailable:Boolean(paymentLink),issueDate:inv.issue_date,dueDate:inv.due_date,expectedPaymentOn:inv.expected_payment_on,expectedAccountId:inv.expected_account_id,subtotal:String(inv.subtotal),discountTotal:String(inv.discount_total),taxTotal:String(inv.tax_total),total:String(inv.total),sellerSnapshot:inv.seller_snapshot,recipientSnapshot:inv.recipient_snapshot,paidAmount:paid,outstanding,status,lines:linesRaw as any[],payments,deliveries};
 }
 async function saveLines(tx:TransactionSql,ws:string,id:string,raw:unknown,currency:string){
  if(!Array.isArray(raw))reject('Invoice lines must be a list.');
- const input=raw.map((x:any)=>{if(!x||typeof x!=='object')reject('Enter valid invoice lines.');return {description:x.description,quantity:x.quantity,unitPrice:x.unitPrice,discountAmount:x.discountAmount??'0',taxRate:x.taxRate??'0'} as InvoiceLineInput;});
- const calc=calculateInvoice(input,currency);await q(tx,'delete from invoice_lines where workspace_id=$1 and invoice_id=$2',[ws,id]);
- for(let i=0;i<calc.lines.length;i++){const l=calc.lines[i]!;await q(tx,'insert into invoice_lines(workspace_id,invoice_id,position,description,quantity,unit_price,discount_amount,tax_rate,net_amount,tax_amount,total_amount) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[ws,id,i,l.description,l.quantity,l.unitPrice,l.discountAmount,l.taxRate,l.netAmount,l.taxAmount,l.totalAmount]);}
+ if(raw.length>100)reject('Add at most 100 invoice lines.');
+ const existing=await q(tx,'select id,catalog_item_id,catalog_snapshot from invoice_lines where workspace_id=$1 and invoice_id=$2',[ws,id]);
+ const catalogSnapshots:(Record<string,unknown>|null)[]=[];
+ const [invoice]=await q(tx,'select issue_date from invoices where workspace_id=$1 and id=$2',[ws,id]);
+ const [settings]=await q(tx,'select enabled from business_tax_settings where workspace_id=$1',[ws]);
+ const snapshots:({id:string;name:string;rate:string;baseNumerator:number;baseDenominator:number;inclusive:boolean;effectiveFrom:string;effectiveTo:string|null;applicability:string}|null)[]=[];
+ const input:InvoiceLineInput[]=[];
+ for(const x of raw){
+  if(!x||typeof x!=='object')reject('Enter valid invoice lines.');
+  let catalogSnapshot:Record<string,unknown>|null=null;
+  if(x.catalogItemId){
+   if(!uuid.test(String(x.catalogItemId)))reject('Choose a valid catalog item.');
+   const prior=existing.find(l=>l.id===x.id && l.catalog_item_id===x.catalogItemId);
+   if(prior && x.catalogVersion===undefined)catalogSnapshot=prior.catalog_snapshot;
+   else {
+    const [item]=await q(tx,'select id,sku,name,unit,version,currency from catalog_items where workspace_id=$1 and id=$2 and archived_at is null',[ws,x.catalogItemId]);
+    if(!item||item.currency!==currency||item.version!==x.catalogVersion)reject('Catalog item changed or has a different currency. Copy it into the draft again.',409);
+    catalogSnapshot={id:item.id,sku:item.sku,name:item.name,unit:item.unit,version:item.version};
+   }
+  }
+  catalogSnapshots.push(catalogSnapshot);
+  let snapshot=null;
+  if(x.taxRateId){
+   if(!uuid.test(String(x.taxRateId)))reject('Choose a valid tax rate.');
+   if(!settings?.enabled)reject('Enable tax for this business before applying a configured rate.');
+   const [rate]=await q(tx,'select id,name,statutory_rate::text as rate,base_numerator as "baseNumerator",base_denominator as "baseDenominator",inclusive,effective_from as "effectiveFrom",effective_to as "effectiveTo",applicability from business_tax_rates where workspace_id=$1 and id=$2 and archived_at is null and effective_from<=$3::date and (effective_to is null or effective_to>=$3::date)',[ws,x.taxRateId,invoice.issue_date]);
+   if(!rate)reject('This tax rate is unavailable on the invoice date. Choose another rate.');
+   snapshot=rate as NonNullable<typeof snapshots[number]>;
+  }
+  if(!settings?.enabled&&typeof x.taxRate==='string'&&Number(x.taxRate)>0)reject('Enable tax for this business before adding invoice tax.');
+  snapshots.push(snapshot);
+  const policy=snapshot?{rate:snapshot.rate,baseNumerator:snapshot.baseNumerator,baseDenominator:snapshot.baseDenominator,inclusive:snapshot.inclusive}:undefined;
+  input.push({description:x.description,quantity:x.quantity,unitPrice:x.unitPrice,discountAmount:x.discountAmount??'0',taxRate:policy?calculateTax('0',currency,policy).effectiveRate:x.taxRate??'0',taxPolicy:policy});
+ }
+ let calc:ReturnType<typeof calculateInvoice>;try{calc=calculateInvoice(input,currency);}catch(error){reject(error instanceof Error?error.message:'Enter valid invoice amounts.');}
+ await q(tx,'delete from invoice_lines where workspace_id=$1 and invoice_id=$2',[ws,id]);
+ for(let i=0;i<calc.lines.length;i++){const l=calc.lines[i]!,snapshot=snapshots[i];await q(tx,'insert into invoice_lines(workspace_id,invoice_id,position,description,quantity,unit_price,discount_amount,tax_rate,net_amount,tax_amount,total_amount,tax_rate_id,tax_snapshot,catalog_item_id,catalog_snapshot) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15::jsonb)',[ws,id,i,l.description,l.quantity,l.unitPrice,l.discountAmount,l.taxRate,l.netAmount,l.taxAmount,l.totalAmount,snapshot?.id??null,snapshot?JSON.stringify({...snapshot,calculationVersion:1}):null,catalogSnapshots[i]?.id??null,catalogSnapshots[i]?JSON.stringify(catalogSnapshots[i]):null]);}
  await q(tx,'update invoices set subtotal=$3,discount_total=$4,tax_total=$5,total=$6 where workspace_id=$1 and id=$2',[ws,id,calc.subtotal,calc.discountTotal,calc.taxTotal,calc.total]);return calc;
 }
 async function audit(tx:TransactionSql,ws:string,user:string,id:string,action:string,before:any,after:any){
  await q(tx,"insert into audit_logs(workspace_id,actor_user_id,entity_type,entity_id,action,before,after) values($1,$2,'invoice',$3,$4,$5::jsonb,$6::jsonb)",[ws,user,id,action,before?protectedJson(before,ws,id,'before'):null,after?protectedJson(after,ws,id,'after'):null]);
 }
-async function issue(tx:TransactionSql,ws:string,user:string,id:string,version?:number){
+export async function issue(tx:TransactionSql,ws:string,user:string,id:string,version?:number){
  const [inv]=await q(tx,'select * from invoices where workspace_id=$1 and id=$2 and archived_at is null for update',[ws,id]);if(!inv)reject('Invoice not found.',404,'NOT_FOUND');
  if(inv.state!=='draft')reject('Only a draft invoice can be issued.',409,'INVALID_STATE');if(version!==undefined&&Number(inv.version)!==version)reject('Invoice changed. Reload and try again.',409,'VERSION_CONFLICT');
+ const configuredLines=await q(tx,'select tax_snapshot from invoice_lines where workspace_id=$1 and invoice_id=$2 and (tax_rate_id is not null or tax_amount>0)',[ws,id]);
+ if(configuredLines.length){
+  const [taxSettings]=await q(tx,'select enabled from business_tax_settings where workspace_id=$1',[ws]);
+  if(!taxSettings?.enabled)reject('Tax is off for this business. Review the draft tax lines before issuing.');
+  for(const line of configuredLines){const snapshot=line.tax_snapshot;if(!snapshot)continue;if(snapshot.effectiveFrom>inv.issue_date||(snapshot.effectiveTo&&snapshot.effectiveTo<inv.issue_date))reject('A saved tax rate does not apply on this invoice date. Save the draft with a valid rate before issuing.');}
+ }
  const [profile]=await q(tx,'select * from business_profiles where workspace_id=$1',[ws]),to=recipient(inv.recipient_snapshot,true);
  if(!profile||!profile.legal_name?.trim()||!validEmail(profile.contact_email)||!addressReady(profile.address))reject('Complete the business legal name, email, and address before issuing.');
  if(!addressReady(to.address))reject('Add recipient street, city, and country before issuing.');
@@ -134,14 +181,14 @@ export const businessRoutes=new Elysia({name:'business-finance'})
   const rows=await q(tx,`with balances as (
    select i.id,i.number,i.state,i.issue_date as "issueDate",i.due_date as "dueDate",i.currency,i.currency_scale as "currencyScale",i.total::text,
    i.first_sent_at as "firstSentAt",i.recipient_snapshot as "recipientSnapshot",i.version,i.created_at,
-   coalesce(sum(p.amount) filter(where p.reversed_at is null),0)::text as "paidAmount"
+   coalesce(sum(p.amount-p.refunded_amount) filter(where p.reversed_at is null),0)::text as "paidAmount"
    from invoices i left join invoice_payments p on p.workspace_id=i.workspace_id and p.invoice_id=i.id
-   where i.workspace_id=$1 and i.archived_at is null and ($2='' or i.number ilike '%'||$2||'%' or i.recipient_snapshot->>'name' ilike '%'||$2||'%')
+   where i.workspace_id=$1 and i.archived_at is null and (current_setting('app.workspace_role',true)<>'staff' or (i.state='draft' and i.created_by=current_setting('app.user_id',true))) and ($2='' or i.number ilike '%'||$2||'%' or i.recipient_snapshot->>'name' ilike '%'||$2||'%')
    group by i.id
   ), derived as (
    select *,case when state='draft' then 'draft' when state='void' then 'void'
-    when total::numeric <= "paidAmount"::numeric then 'paid' when "paidAmount"::numeric>0 then 'partially_paid'
-    when "dueDate"<$3::date then 'overdue' when "firstSentAt" is not null then 'sent' else 'issued' end as status from balances
+    when total::numeric <= "paidAmount"::numeric then 'paid' when "dueDate"<$3::date then 'overdue'
+    when "paidAmount"::numeric>0 then 'partially_paid' when "firstSentAt" is not null then 'sent' else 'issued' end as status from balances
   ) select id,number,state,"issueDate","dueDate",currency,"currencyScale",total,"firstSentAt","recipientSnapshot",version,"paidAmount",status
   from derived where $4='all' or status=$4 order by created_at desc limit $5 offset $6`,[params.workspaceId,search,today,status,limit,(page-1)*limit]);
   return {items:rows.map((r:any)=>({...r,outstanding:compareMoney(r.total,r.paidAmount,Number(r.currencyScale))<=0?'0':addMoney(r.total,'-'+r.paidAmount,Number(r.currencyScale))})),page,limit};
@@ -152,6 +199,7 @@ export const businessRoutes=new Elysia({name:'business-finance'})
   const notes=b.notes??null,payment=b.paymentInstructions??null;if(!(notes===null||bounded(notes,4000))||!(payment===null||bounded(payment,2000)))return fail(422,'INVALID_INPUT','Invoice notes or payment instructions are too long.');
   const draftId=randomUUID();
   const [inv]=await q(tx,'insert into invoices(id,workspace_id,issue_date,due_date,currency,currency_scale,recipient_snapshot,locale,notes,payment_instructions,created_by,updated_by) values($11,$1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$10) returning id',[params.workspaceId,issueDate,dueDate,w.currency,currencyScale(w.currency),protectedContact(to,params.workspaceId,draftId,'recipient_snapshot'),b.locale==='id'?'id':'en',notes,protectedText(payment,params.workspaceId,draftId,'payment_instructions'),actor.id,draftId]);
+  if(b.contactId){await validateContact(tx,params.workspaceId,b.contactId);await q(tx,'update invoices set contact_id=$3 where workspace_id=$1 and id=$2',[params.workspaceId,inv.id,b.contactId]);}
   if(Array.isArray(b.lines)&&b.lines.length)await saveLines(tx,params.workspaceId,inv.id,b.lines,w.currency);await audit(tx,params.workspaceId,actor.id,inv.id,'draft_created',null,{});return Response.json({invoice:await detail(tx,params.workspaceId,inv.id)},{status:201});
  }))
  .get('/api/workspaces/:workspaceId/invoices/:invoiceId',({request,params})=>scope(request,params.workspaceId,async(tx)=>({invoice:await detail(tx,params.workspaceId,params.invoiceId)})))
@@ -167,6 +215,7 @@ export const businessRoutes=new Elysia({name:'business-finance'})
   const b=await request.json() as Record<string,any>,[inv]=await q(tx,'select * from invoices where workspace_id=$1 and id=$2 and archived_at is null for update',[params.workspaceId,params.invoiceId]);if(!inv)return fail(404,'NOT_FOUND','Invoice not found.');if(inv.state!=='draft')return fail(409,'INVALID_STATE','Only drafts can be edited.');if(b.version!==undefined&&Number(b.version)!==Number(inv.version))return fail(409,'VERSION_CONFLICT','This invoice changed. Reload and retry.');
   const to=b.recipient===undefined?inv.recipient_snapshot:recipient(b.recipient),issueDate=b.issueDate??inv.issue_date,dueDate=b.dueDate??inv.due_date,notes=b.notes===undefined?inv.notes:b.notes,payment=b.paymentInstructions===undefined?inv.payment_instructions:b.paymentInstructions;if(!validDate(issueDate)||!validDate(dueDate)||dueDate<issueDate)return fail(422,'INVALID_DATES','Enter valid issue and due dates.');if(!(notes===null||bounded(notes,4000))||!(payment===null||bounded(payment,2000)))return fail(422,'INVALID_INPUT','Invoice notes or payment instructions are too long.');
   await q(tx,'update invoices set recipient_snapshot=$3::jsonb,issue_date=$4,due_date=$5,notes=$6,payment_instructions=$7,locale=$8,version=version+1,updated_by=$9,updated_at=now() where workspace_id=$1 and id=$2',[params.workspaceId,inv.id,protectedContact(to,params.workspaceId,inv.id,'recipient_snapshot'),issueDate,dueDate,notes,protectedText(payment,params.workspaceId,inv.id,'payment_instructions'),b.locale==='en'||b.locale==='id'?b.locale:inv.locale,actor.id]);
+  if(b.contactId!==undefined){if(b.contactId&&b.contactId!==inv.contact_id)await validateContact(tx,params.workspaceId,b.contactId);await q(tx,'update invoices set contact_id=$3 where workspace_id=$1 and id=$2',[params.workspaceId,inv.id,b.contactId||null]);}
   if(b.lines!==undefined){if(!Array.isArray(b.lines))return fail(422,'INVALID_LINES','Invoice lines must be a list.');if(b.lines.length)await saveLines(tx,params.workspaceId,inv.id,b.lines,inv.currency);else{await q(tx,'delete from invoice_lines where workspace_id=$1 and invoice_id=$2',[params.workspaceId,inv.id]);await q(tx,'update invoices set subtotal=0,discount_total=0,tax_total=0,total=0 where workspace_id=$1 and id=$2',[params.workspaceId,inv.id]);}}
   await audit(tx,params.workspaceId,actor.id,inv.id,'draft_updated',null,{version:Number(inv.version)+1});return {invoice:await detail(tx,params.workspaceId,inv.id)};
  }))
@@ -185,6 +234,7 @@ export const businessRoutes=new Elysia({name:'business-finance'})
  .post('/api/workspaces/:workspaceId/invoices/:invoiceId/pdf',async({request,params})=>{
   const allowed=await scope(request,params.workspaceId,async()=>true);if(allowed instanceof Response)return allowed;
   const result=await ensurePdf(params.workspaceId,params.invoiceId);
+  const stillAllowed=await scope(request,params.workspaceId,async()=>true);if(stillAllowed instanceof Response)return stillAllowed;
   if('bytes'in result)return new Response(Buffer.from(result.bytes),{headers:{'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="invoice-draft-preview.pdf"','Cache-Control':'private, no-store'}});
   const obj=await getAttachment(result.object_key);return new Response(Buffer.from(await obj.Body!.transformToByteArray()),{headers:{'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="invoice.pdf"','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
  })
@@ -205,32 +255,36 @@ export const businessRoutes=new Elysia({name:'business-finance'})
   });
   if(!(queued instanceof Response)||queued.status===202)queueMicrotask(()=>void dispatchInvoiceDeliveries());return queued;
  })
- .get('/api/workspaces/:workspaceId/invoices/:invoiceId/deliveries',({request,params})=>scope(request,params.workspaceId,async(tx)=>({items:await q(tx,'select id,state,attempts,error_code as "errorCode",accepted_at as "acceptedAt",created_at as "createdAt" from invoice_deliveries where workspace_id=$1 and invoice_id=$2 order by created_at desc',[params.workspaceId,params.invoiceId])})))
+ .post('/api/workspaces/:workspaceId/invoices/:invoiceId/resend-payment-link',async({request,params})=>{
+  const body=await request.json().catch(()=>({})) as {idempotencyKey?:unknown};
+  const key=body.idempotencyKey??request.headers.get('idempotency-key')??randomUUID();
+  if(typeof key!=='string'||key.length<8||key.length>200)return fail(422,'INVALID_KEY','Provide a valid delivery key.');
+  const queued=await scope(request,params.workspaceId,async(tx,actor)=>{
+   const [inv]=await q(tx,"select * from invoices where workspace_id=$1 and id=$2 and state='issued' and archived_at is null for update",[params.workspaceId,params.invoiceId]);
+   if(!inv)reject('Only an issued invoice can resend a payment link.',409,'INVALID_STATE');
+   const to=inv.recipient_snapshot?.email;if(!validEmail(to))reject('The invoice recipient needs a valid email address.');
+   const [prior]=await q(tx,'select id,invoice_id,purpose,state from invoice_deliveries where workspace_id=$1 and idempotency_key=$2',[params.workspaceId,key]);
+   if(prior){if(prior.invoice_id!==inv.id||prior.purpose!=='payment_link')reject('This delivery key belongs to another request.',409,'IDEMPOTENCY_CONFLICT');return Response.json({delivery:{id:prior.id,state:prior.state}},{status:202});}
+   const payment=await invoicePaymentLink(tx,params.workspaceId,inv.id);
+   if(!payment)reject('Create a ready, unexpired QRIS payment link for the remaining invoice balance first.',409,'PAYMENT_LINK_UNAVAILABLE');
+   const [recent]=await q(tx,"select id from invoice_deliveries where workspace_id=$1 and invoice_id=$2 and purpose='payment_link' and (state in ('pending','queued','sending','uncertain') or created_at>now()-interval '60 seconds') limit 1",[params.workspaceId,inv.id]);
+   if(recent)reject('A payment-link email was recently requested. Check delivery history before sending again.',409,'DELIVERY_IN_PROGRESS');
+   const deliveryId=randomUUID(),message=inv.locale==='id'?'Berikut tautan pembayaran faktur Anda. Bayar dengan QRIS tanpa perlu masuk ke akun CapyBudget.':'Here is your invoice payment link again. You can pay with QRIS without signing in to CapyBudget.';
+   const [delivery]=await q(tx,"insert into invoice_deliveries(id,workspace_id,invoice_id,purpose,payment_request_id,requested_by,recipient_snapshot,reminder_message_snapshot,locale,idempotency_key) values($1,$2,$3,'payment_link',$4,$5,$6,$7,$8,$9) returning id,state",[deliveryId,params.workspaceId,inv.id,payment.id,actor.id,protectedText(to,params.workspaceId,deliveryId,'recipient_snapshot'),protectedText(message,params.workspaceId,deliveryId,'reminder_message_snapshot'),inv.locale,key]);
+   await audit(tx,params.workspaceId,actor.id,inv.id,'payment_link_email_requested',null,{deliveryId,paymentRequestId:payment.id});return Response.json({delivery},{status:202});
+  });
+  if(queued instanceof Response&&queued.status===202)queueMicrotask(()=>void dispatchInvoiceDeliveries());return queued;
+ })
+ .get('/api/workspaces/:workspaceId/invoices/:invoiceId/deliveries',({request,params})=>scope(request,params.workspaceId,async(tx)=>({items:await q(tx,'select id,purpose,state,attempts,error_code as "errorCode",accepted_at as "acceptedAt",created_at as "createdAt" from invoice_deliveries where workspace_id=$1 and invoice_id=$2 order by created_at desc',[params.workspaceId,params.invoiceId])})))
  .post('/api/workspaces/:workspaceId/invoices/:invoiceId/payments',async({request,params})=>scope(request,params.workspaceId,async(tx,actor,w)=>{
-  const b=await request.json() as Record<string,unknown>,[inv]=await q(tx,'select * from invoices where workspace_id=$1 and id=$2 and archived_at is null for update',[params.workspaceId,params.invoiceId]);if(!inv)return fail(404,'NOT_FOUND','Invoice not found.');if(inv.state!=='issued')return fail(409,'INVALID_STATE','Payments require an issued invoice.');
-  const scale=Number(inv.currency_scale),amount=b.amount,paidOn=b.paidOn;if(!validPositiveAmount(amount,scale)||!validDate(paidOn))return fail(422,'INVALID_PAYMENT','Enter a positive amount and valid received date.');if(paidOn>workspaceToday(w.timezone))return fail(422,'FUTURE_PAYMENT','Payment date cannot be in the future.');
-  if(!uuid.test(String(b.accountId))||!uuid.test(String(b.categoryId))||typeof b.idempotencyKey!=='string'||b.idempotencyKey.length<8||b.idempotencyKey.length>200)return fail(422,'INVALID_PAYMENT','Choose a receiving account and income category; provide an idempotency key.');
-  const hash=createHash('sha256').update(JSON.stringify({invoiceId:inv.id,amount,paidOn,accountId:b.accountId,categoryId:b.categoryId,reference:b.reference??null})).digest('hex');
-  const [existing]=await q(tx,"select request_hash,resource_id from idempotency_keys where workspace_id=$1 and actor_key=$2 and operation='invoice_payment' and key=$3",[params.workspaceId,actor.id,b.idempotencyKey]);
-  if(existing){if(existing.request_hash!==hash)return fail(409,'IDEMPOTENCY_CONFLICT','This key was already used with a different payment.');if(existing.resource_id){const [payment]=await q(tx,'select id,amount::text,currency,paid_on as "paidOn",transaction_id as "transactionId" from invoice_payments where workspace_id=$1 and id=$2',[params.workspaceId,existing.resource_id]);return {payment,replayed:true};}return fail(409,'REQUEST_PENDING','This request is already running.');}
-  const paid=await paidFor(tx,params.workspaceId,inv.id),remaining=compareMoney(String(inv.total),paid,scale)<=0?'0':addMoney(String(inv.total),'-'+paid,scale);if(compareMoney(amount,remaining,scale)>0)return fail(422,'OVERPAYMENT','Payment cannot exceed the outstanding amount.');
-  const [account]=await q(tx,'select id,ledger_account_id,currency from accounts where workspace_id=$1 and id=$2 and archived_at is null and deleted_at is null',[params.workspaceId,b.accountId]),[category]=await q(tx,"select id,ledger_account_id,type from categories where workspace_id=$1 and id=$2 and archived_at is null",[params.workspaceId,b.categoryId]);if(!account||account.currency!==inv.currency||!category||category.type!=='income')return fail(422,'INVALID_REFERENCE','Choose an active same-currency account and income category from this business.');
-  const [key]=await q(tx,"insert into idempotency_keys(workspace_id,actor_key,operation,key,request_hash,expires_at) values($1,$2,'invoice_payment',$3,$4,now()+interval '24 hours') on conflict(workspace_id,actor_key,operation,key) do nothing returning id",[params.workspaceId,actor.id,b.idempotencyKey,hash]);
-  if(!key){const [old]=await q(tx,"select request_hash,resource_id from idempotency_keys where workspace_id=$1 and actor_key=$2 and operation='invoice_payment' and key=$3",[params.workspaceId,actor.id,b.idempotencyKey]);if(old.request_hash!==hash)return fail(409,'IDEMPOTENCY_CONFLICT','This key was already used with a different payment.');if(old.resource_id){const [payment]=await q(tx,'select id,amount::text,currency,paid_on as "paidOn",transaction_id as "transactionId" from invoice_payments where workspace_id=$1 and id=$2',[params.workspaceId,old.resource_id]);return {payment,replayed:true};}return fail(409,'REQUEST_PENDING','This request is already running.');}
-  const txid=randomUUID(),journal=randomUUID(),reference=typeof b.reference==='string'?b.reference.slice(0,300):null;
-  await q(tx,"insert into transactions(id,workspace_id,account_id,category_id,amount,currency,type,occurred_at,notes,merchant,created_by,updated_by) values($1,$2,$3,$4,$5,$6,'income',$7,$8,$9,$10,$10)",[txid,params.workspaceId,account.id,category.id,amount,inv.currency,paidOn,reference,'Invoice '+inv.number,actor.id]);
-  await q(tx,"insert into journal_entries(id,workspace_id,transaction_id,effective_date,reason,created_by) values($1,$2,$3,$4,'invoice_payment',$5)",[journal,params.workspaceId,txid,paidOn,actor.id]);
-  await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency) values($1,$2,$3,$4,0,$6),($1,$2,$5,0,$4,$6)',[params.workspaceId,journal,account.ledger_account_id,amount,category.ledger_account_id,inv.currency]);
-  const paymentId=randomUUID();
-  const [payment]=await q(tx,'insert into invoice_payments(id,workspace_id,invoice_id,transaction_id,account_id,category_id,amount,currency,paid_on,reference,created_by) values($11,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id,amount::text,currency,paid_on as "paidOn",transaction_id as "transactionId"',[params.workspaceId,inv.id,txid,account.id,category.id,amount,inv.currency,paidOn,protectedText(reference,params.workspaceId,paymentId,'reference'),actor.id,paymentId]);
-  await q(tx,"update idempotency_keys set resource_id=$4,response_body=$5::jsonb where workspace_id=$1 and actor_key=$2 and operation='invoice_payment' and key=$3",[params.workspaceId,actor.id,b.idempotencyKey,payment.id,JSON.stringify(payment)]);await audit(tx,params.workspaceId,actor.id,inv.id,'payment_recorded',null,{paymentId:payment.id,amount,currency:inv.currency});return {payment};
+  const b=await request.json() as any;return recordInvoiceReceipt(tx,params.workspaceId,actor,{invoiceId:params.invoiceId,amount:b.amount,paidOn:b.paidOn,accountId:b.accountId,categoryId:b.categoryId,reference:b.reference,idempotencyKey:b.idempotencyKey,existingTransactionId:b.existingTransactionId});
  }))
- .get('/api/workspaces/:workspaceId/invoices/:invoiceId/payments',({request,params})=>scope(request,params.workspaceId,async(tx)=>({items:await q(tx,'select id,amount::text,currency,paid_on as "paidOn",reference,reversed_at as "reversedAt",reversal_reason as "reversalReason" from invoice_payments where workspace_id=$1 and invoice_id=$2 order by paid_on desc',[params.workspaceId,params.invoiceId])})))
+ .get('/api/workspaces/:workspaceId/invoices/:invoiceId/payments',({request,params})=>scope(request,params.workspaceId,async(tx)=>({items:await q(tx,'select id,amount::text,refunded_amount::text as "refundedAmount",currency,paid_on as "paidOn",reference,reversed_at as "reversedAt",reversal_reason as "reversalReason" from invoice_payments where workspace_id=$1 and invoice_id=$2 order by paid_on desc',[params.workspaceId,params.invoiceId])})))
  .post('/api/workspaces/:workspaceId/invoices/:invoiceId/payments/:paymentId/reverse',async({request,params})=>scope(request,params.workspaceId,async(tx,actor)=>{
   const b=await request.json() as {reason?:unknown,effectiveOn?:unknown};if(!bounded(b.reason,1000,true)||!validDate(b.effectiveOn))return fail(422,'INVALID_REVERSAL','Enter a correction reason and valid effective date.');
-  const [p]=await q(tx,'select p.* from invoice_payments p join invoices i on i.workspace_id=p.workspace_id and i.id=p.invoice_id where p.workspace_id=$1 and p.invoice_id=$2 and p.id=$3 for update of p,i',[params.workspaceId,params.invoiceId,params.paymentId]);if(!p)return fail(404,'NOT_FOUND','Payment not found.');if(p.reversed_at)return fail(409,'ALREADY_REVERSED','Payment was already reversed.');
+  const [p]=await q(tx,'select p.* from invoice_payments p join invoices i on i.workspace_id=p.workspace_id and i.id=p.invoice_id where p.workspace_id=$1 and p.invoice_id=$2 and p.id=$3 for update of p,i',[params.workspaceId,params.invoiceId,params.paymentId]);if(!p)return fail(404,'NOT_FOUND','Payment not found.');if(Number(p.refunded_amount)>0)return fail(409,'REFUND_EXISTS','This receipt has actual refunds. Use the refund workflow instead of reversing it.');if(b.effectiveOn<p.paid_on)return fail(422,'INVALID_DATE','Correction date cannot precede the receipt.');if(p.reversed_at)return fail(409,'ALREADY_REVERSED','Payment was already reversed.');
   const [entry]=await q(tx,'select j.id from journal_entries j where j.workspace_id=$1 and j.transaction_id=$2 and not exists(select 1 from journal_entries r where r.workspace_id=j.workspace_id and r.reverses_entry_id=j.id) order by j.created_at desc limit 1 for update',[params.workspaceId,p.transaction_id]);if(!entry)return fail(409,'JOURNAL_NOT_FOUND','The payment journal entry was not found.');
-  const lines=await q(tx,'select ledger_account_id,debit::text,credit::text,currency from journal_lines where workspace_id=$1 and entry_id=$2',[params.workspaceId,entry.id]),reverseId=randomUUID();
-  await q(tx,"insert into journal_entries(id,workspace_id,transaction_id,effective_date,reason,reverses_entry_id,created_by) values($1,$2,$3,$4,'invoice_payment_reversal',$5,$6)",[reverseId,params.workspaceId,p.transaction_id,b.effectiveOn,entry.id,actor.id]);for(const line of lines)await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency) values($1,$2,$3,$4,$5,$6)',[params.workspaceId,reverseId,line.ledger_account_id,line.credit,line.debit,line.currency]);
+  const lines=await q(tx,'select ledger_account_id,debit::text,credit::text,currency,base_debit::text,base_credit::text from journal_lines where workspace_id=$1 and entry_id=$2',[params.workspaceId,entry.id]),reverseId=randomUUID();
+  await q(tx,"insert into journal_entries(id,workspace_id,transaction_id,effective_date,reason,reverses_entry_id,created_by) values($1,$2,$3,$4,'invoice_payment_reversal',$5,$6)",[reverseId,params.workspaceId,p.transaction_id,b.effectiveOn,entry.id,actor.id]);for(const line of lines)await q(tx,'insert into journal_lines(workspace_id,entry_id,ledger_account_id,debit,credit,currency,base_debit,base_credit) values($1,$2,$3,$4,$5,$6,$7,$8)',[params.workspaceId,reverseId,line.ledger_account_id,line.credit,line.debit,line.currency,line.base_credit,line.base_debit]);
   await q(tx,'update transactions set deleted_at=now(),deleted_by=$3,updated_by=$3,updated_at=now(),version=version+1 where workspace_id=$1 and id=$2',[params.workspaceId,p.transaction_id,actor.id]);await q(tx,'update invoice_payments set reversed_at=now(),reversed_by=$4,reversal_reason=$5,reversal_effective_on=$6 where workspace_id=$1 and invoice_id=$2 and id=$3',[params.workspaceId,params.invoiceId,p.id,actor.id,b.reason,b.effectiveOn]);await audit(tx,params.workspaceId,actor.id,params.invoiceId,'payment_reversed',{paymentId:p.id,amount:p.amount},{reason:b.reason,effectiveOn:b.effectiveOn});return {reversed:true};
  }));

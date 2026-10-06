@@ -18,6 +18,7 @@ export function notificationTitle(item: NoticeMessage, locale: Locale): string {
   if (item.messageKey === 'forecast.shortfall') return id ? 'Perkiraan kekurangan saldo' : 'Projected cash shortfall';
   if (item.messageKey === 'forecast.low_balance') return id ? 'Saldo diperkirakan rendah' : 'Projected low balance';
   if (item.messageKey === 'forecast.invoice_followup') return id ? 'Faktur menunggu pembayaran' : 'Invoice needs follow-up';
+  if(item.messageKey?.startsWith('tax.'))return `${p.name ?? (id?'Pengingat pajak':'Tax reminder')} · ${item.messageKey==='tax.overdue'?(id?'lewat jatuh tempo':'overdue'):item.messageKey==='tax.today'?(id?'jatuh tempo hari ini':'due today'):(id?'segera jatuh tempo':'due soon')}`;
   if (item.messageKey === 'invoice.overdue') return id ? `Faktur ${p.number ?? ''} telah jatuh tempo` : `Invoice ${p.number ?? ''} is overdue`;
   if (item.messageKey === 'invoice.today') return id ? `Faktur ${p.number ?? ''} jatuh tempo hari ini` : `Invoice ${p.number ?? ''} is due today`;
   if (item.messageKey === 'invoice.upcoming') return id ? `Faktur ${p.number ?? ''} segera jatuh tempo` : `Invoice ${p.number ?? ''} is due soon`;
@@ -37,6 +38,7 @@ export function notificationTitle(item: NoticeMessage, locale: Locale): string {
 export function notificationMessage(item: NoticeMessage, locale: Locale): string {
   const p = item.messageParams ?? {}, id = locale === 'id';
   if (item.messageKey?.startsWith('forecast.')) return `${id ? 'Tinjau proyeksi arus kas untuk' : 'Review the cashflow forecast for'} ${formatDate(p.date ?? p.dueDate, '')}.`;
+  if(item.messageKey?.startsWith('tax.'))return `${id?'Tanggal yang Anda tetapkan':'Your configured date'}: ${formatDate(p.dueDate,'')}`;
   if (item.messageKey?.startsWith('invoice.')) return `${id ? 'Sisa' : 'Outstanding'}: ${money(p.amount, p.currency, locale)} · ${formatDate(p.dueDate, '')}`;
   if (item.messageKey === 'bill.overdue' || item.messageKey === 'bill.today' || item.messageKey === 'bill.upcoming' || item.messageKey?.startsWith('payment.')) return `${money(p.amount, p.currency, locale)} · ${formatDate(p.dueDate, '')}`;
   if (item.messageKey === 'balance.low') return `${id ? 'Saldo tercatat' : 'Recorded balance'}: ${money(p.balance, p.currency, locale)} · ${id ? 'Batas' : 'Limit'}: ${money(p.threshold, p.currency, locale)}`;

@@ -1,3 +1,4 @@
+import { authorizeWorkspace } from '../business/permissions';
 import { Elysia } from 'elysia';
 import type { TransactionSql } from 'postgres';
 import { auth } from '../auth';
@@ -13,8 +14,8 @@ const fail=(status:number,code:string,message:string)=>Response.json({code,messa
 async function scope<T>(request:Request,workspaceId:string,run:(tx:TransactionSql,userId:string)=>Promise<T>):Promise<T|Response>{
  if(!uuid.test(workspaceId))return fail(400,'INVALID_WORKSPACE_ID','Workspace ID is invalid.');
  const session=await auth.api.getSession({headers:request.headers});if(!session)return fail(401,'AUTH_REQUIRED','Sign in to continue.');if(!session.user.emailVerified)return fail(403,'EMAIL_VERIFICATION_REQUIRED','Verify your email to continue.');
- try{return await client.begin(async tx=>{await q(tx,"select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[session.user.id,workspaceId]);const [member]=await q(tx,'select 1 from workspace_memberships where workspace_id=$1 and user_id=$2',[workspaceId,session.user.id]);if(!member)return fail(404,'WORKSPACE_NOT_FOUND','Workspace not found.');return run(tx,session.user.id);}) as T|Response;}
- catch(error){const e=error as {code?:string};console.error('Notification request failed',{sqlState:e.code??'unknown'});return fail(500,'NOTIFICATION_FAILED','The request could not be completed.');}
+ try{return await client.begin(async tx=>{await q(tx,"select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[session.user.id,workspaceId]);await authorizeWorkspace(tx,workspaceId,session.user.id,request);const [member]=await q(tx,'select 1 from workspace_memberships where workspace_id=$1 and user_id=$2',[workspaceId,session.user.id]);if(!member)return fail(404,'WORKSPACE_NOT_FOUND','Workspace not found.');return run(tx,session.user.id);}) as T|Response;}
+ catch(error){const e=error as Error&{code?:string;status?:number};if(e.status)return fail(e.status,e.code??'REQUEST_FAILED',e.message);console.error('Notification request failed',{sqlState:e.code??'unknown'});return fail(500,'NOTIFICATION_FAILED','The request could not be completed.');}
 }
 
 function isResponse(value:unknown):value is Response{return value instanceof Response;}

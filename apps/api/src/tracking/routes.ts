@@ -1,3 +1,4 @@
+import { authorizeWorkspace } from '../business/permissions';
 import { Elysia } from 'elysia';
 import { Money, positive, allocations } from './v2/money';
 import { valuation, rateFor, type Rate } from './v2/fx';
@@ -65,6 +66,7 @@ export async function withWorkspace<T>(request: Request, workspaceId: string, ru
   try {
     return await client.begin(async (tx) => {
       await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)",[actor.id,workspaceId]);
+      await authorizeWorkspace(tx,workspaceId,actor.id,request);
       const membership = await tx.unsafe('select 1 from workspace_memberships where workspace_id=$1 and user_id=$2',[workspaceId,actor.id]);
       if (!membership.length) throw Object.assign(new Error('Workspace not found.'),{status:404,code:'WORKSPACE_NOT_FOUND'});
       return run(tx,actor);
@@ -266,7 +268,12 @@ export async function processRecurringWorkspace(workspaceId:string,ownerUserId:s
   });
 }
 
+export async function assertUnlinkedBusinessTransaction(tx:TransactionSql,ws:string,id:string){
+ const [link]=await q(tx,'select id from invoice_payments where workspace_id=$1 and transaction_id=$2 union all select id from vendor_bill_payments where workspace_id=$1 and transaction_id=$2 union all select id from payment_refunds where workspace_id=$1 and transaction_id=$2 union all select id from payment_request_fees where workspace_id=$1 and transaction_id=$2 union all select id from payment_requests where workspace_id=$1 and unapplied_transaction_id=$2 union all select id from project_allocations where workspace_id=$1 and transaction_id=$2 union all select id from payment_requests where workspace_id=$1 and net_settlement_source_id=$2 limit 1',[ws,id]);
+ if(link)reject('This transaction is linked to a business payment or project. Use its business correction flow, or remove its project allocation first.');
+}
 export async function reverseTransaction(tx: TransactionSql, ws: string, actor: Actor, id: string, date: string) {
+  await assertUnlinkedBusinessTransaction(tx,ws,id);
   const [debtPayment]=await q(tx,'select id from debt_payments where workspace_id=$1 and (principal_transaction_id=$2 or expense_transaction_id=$2) limit 1',[ws,id]);
   if(debtPayment)reject('This transaction records a debt payment and cannot be edited or deleted.');
   const [old]=await q(tx,'select j.id from journal_entries j where j.workspace_id=$1 and j.transaction_id=$2 and j.reason in (\'create\',\'restore\') and not exists(select 1 from journal_entries r where r.workspace_id=j.workspace_id and r.reverses_entry_id=j.id) order by j.created_at desc limit 1 for update',[ws,id]);
@@ -282,7 +289,7 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
    const actor=await actorFor(request); if(actor instanceof Response)return actor;
    return client.begin(async(tx)=>{
      await tx.unsafe("select set_config('app.user_id',$1,true),set_config('app.workspace_id','',true)",[actor.id]);
-     const items=await tx.unsafe('select w.id,w.name,w.kind,w.currency,w.timezone from workspaces w join workspace_memberships m on m.workspace_id=w.id where m.user_id=$1 and w.archived_at is null order by w.kind,w.created_at',[actor.id]);
+     const items=await tx.unsafe('select w.id,w.name,w.kind,w.currency,w.timezone,m.role from workspaces w join workspace_memberships m on m.workspace_id=w.id where m.user_id=$1 and w.archived_at is null order by w.kind,w.created_at',[actor.id]);
      const result=[...items];
      if(!result.some((w:any)=>w.kind==='personal')){
        const [created]=await tx.unsafe("insert into workspaces(owner_user_id,name,kind) values($1,'Personal','personal') on conflict(owner_user_id) where kind='personal' do nothing returning id,name,kind,currency,timezone",[actor.id]);
@@ -578,6 +585,7 @@ export const trackingRoutes=new Elysia({name:'tracking-routes'})
  .post('/api/workspaces/:workspaceId/transactions/:id/restore',async({request,params})=>withWorkspace(request,params.workspaceId,async(tx,actor)=>{
    if(!uuidRe.test(params.id))reject('Transaction ID is invalid.');
    const [before]=await q(tx,'select * from transactions where workspace_id=$1 and id=$2 and deleted_at is not null for update',[params.workspaceId,params.id]);
+   await assertUnlinkedBusinessTransaction(tx,params.workspaceId,params.id);
    if(!before)return fail(404,'DELETED_TRANSACTION_NOT_FOUND','Deleted transaction not found.');
    const [reversal]=await q(tx,'select j.id from journal_entries j where j.workspace_id=$1 and j.transaction_id=$2 and j.reverses_entry_id is not null order by j.created_at desc limit 1 for update',[params.workspaceId,params.id]);
    if(reversal){

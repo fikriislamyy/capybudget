@@ -104,6 +104,12 @@ export async function securityGuard(request: Request) {
   }
   if (path === "/api/privacy/deletion/receipt" && request.method === "POST")
     return;
+  if(request.method==='GET'&&/^\/api\/payments\/qris\/[0-9a-f]{64}$/.test(path))return;
+  if(request.method==='POST'&&/^\/api\/payments\/qris\/[0-9a-f]{64}\/simulate$/.test(path))return;
+  // Provider callbacks authenticate inside their handlers: DOKU HMAC or Pakasir X-Secret.
+  if(request.method==='POST'&&/^\/api\/payments\/(?:doku|pakasir)\/[0-9a-f-]{36}$/i.test(path))return;
+  if ((request.method === 'GET' && path === '/api/business/invitations/flow') ||
+      (request.method === 'POST' && ['/api/business/invitations/flow/start','/api/business/invitations/flow/cancel'].includes(path))) return;
   if (path.startsWith("/api/auth/")) return;
   try {
     const actor = await securityActor(request);

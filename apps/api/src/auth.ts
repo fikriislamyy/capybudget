@@ -1,3 +1,4 @@
+import { invitationCookie, invitationFromHeaders } from './business/invitation-flow';
 import { meetsPasswordPolicy } from '../../../shared/password-policy';
 import { createAuthMiddleware, APIError } from 'better-auth/api';
 import { client } from './db';
@@ -36,6 +37,14 @@ function frontendResetUrl(authUrl: string): string {
 export const auth = betterAuth({
   hooks: {
     before: createAuthMiddleware(async ctx => {
+      const headers = ctx.headers ?? ctx.request?.headers;
+      if (headers && invitationCookie(headers) && ['/sign-up/email','/sign-in/email','/email-otp/verify-email','/email-otp/send-verification-otp','/forget-password','/request-password-reset'].includes(ctx.path)) {
+        let invite;
+        try { invite = await invitationFromHeaders(headers); }
+        catch { throw new APIError('SERVICE_UNAVAILABLE',{message:'Invitation service is temporarily unavailable. Please try again.'}); }
+        if (!invite || typeof ctx.body?.email !== 'string' || ctx.body.email.trim().toLowerCase() !== String(invite.email_snapshot).toLowerCase())
+          throw new APIError('BAD_REQUEST',{code:'INVITATION_EMAIL_REQUIRED',message:'Use the email address on your invitation. Open the invitation again if it has expired.'});
+      }
       // Validate new credentials only; leave existing-password verification and dummy hashing unchanged.
       const candidate = ctx.path === '/sign-up/email' ? ctx.body?.password : ['/reset-password', '/change-password', '/email-otp/reset-password'].includes(ctx.path) ? (ctx.body?.newPassword ?? ctx.body?.password) : undefined;
       if (candidate !== undefined && !meetsPasswordPolicy(candidate)) throw new APIError('BAD_REQUEST', { code: 'PASSWORD_REQUIREMENTS', message: 'Use 12–128 characters including an uppercase letter, a lowercase letter, a number, and a symbol.' });
@@ -101,7 +110,14 @@ export const auth = betterAuth({
     // Avoid dispatching through the default verification flow during creation.
     sendOnSignUp: false,
     sendOnSignIn: false,
-    autoSignInAfterVerification: false
+    autoSignInAfterVerification: true,
+    async beforeEmailVerification(verificationUser) {
+      // Verification is for new/unverified accounts; it must not become an OTP-only
+      // sign-in path for existing accounts that require a password and second factor.
+      if (verificationUser.emailVerified) throw new APIError('BAD_REQUEST', {
+        code: 'EMAIL_ALREADY_VERIFIED', message: 'Your email is already verified. Sign in to continue.'
+      });
+    }
   },
   session: {
     expiresIn: 7 * 24 * 60 * 60,

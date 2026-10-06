@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, text, timestamp, uuid, numeric, index, boolean, uniqueIndex, date, integer, jsonb, varchar, primaryKey, bigint, foreignKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uuid, numeric, index, boolean, uniqueIndex, date, integer, jsonb, varchar, primaryKey, bigint, foreignKey, unique, check } from 'drizzle-orm/pg-core';
 
 // Better Auth's Drizzle adapter uses these four tables for sessions and identity.
 export const user = pgTable('user', {
@@ -75,7 +75,7 @@ export const workspaces = pgTable('workspaces', {
 export const workspaceMemberships = pgTable('workspace_memberships', {
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  role: text('role', { enum: ['owner'] }).notNull().default('owner'),
+  role: text('role', { enum: ['owner', 'accountant', 'staff', 'viewer'] }).notNull().default('owner'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, (table) => [primaryKey({ columns: [table.workspaceId, table.userId] }), index('workspace_memberships_user_idx').on(table.userId)]);
 
@@ -344,7 +344,7 @@ export const invoiceNumberSequences = pgTable('invoice_number_sequences', {
 
 export const invoices = pgTable('invoices', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
-  number: text('number'), state: text('state', { enum: ['draft', 'issued', 'void'] }).notNull().default('draft'),
+  contactId: uuid('contact_id'), number: text('number'), state: text('state', { enum: ['draft', 'issued', 'void'] }).notNull().default('draft'),
   issueDate: date('issue_date').notNull(), dueDate: date('due_date').notNull(), expectedPaymentOn: date('expected_payment_on'), expectedAccountId: uuid('expected_account_id'), currency: varchar('currency', { length: 3 }).notNull(), currencyScale: integer('currency_scale').notNull().default(2),
   sellerSnapshot: jsonb('seller_snapshot'), recipientSnapshot: jsonb('recipient_snapshot').notNull(), locale: text('locale').notNull().default('en'),
   notes: text('notes'), paymentInstructions: text('payment_instructions'), subtotal: numeric('subtotal', { precision: 19, scale: 4 }).notNull().default('0'),
@@ -359,6 +359,7 @@ export const invoiceLines = pgTable('invoice_lines', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), invoiceId: uuid('invoice_id').notNull(), position: integer('position').notNull(),
   description: text('description').notNull(), quantity: numeric('quantity', { precision: 19, scale: 4 }).notNull(), unitPrice: numeric('unit_price', { precision: 19, scale: 4 }).notNull(),
   discountAmount: numeric('discount_amount', { precision: 19, scale: 4 }).notNull().default('0'), taxRate: numeric('tax_rate', { precision: 7, scale: 4 }).notNull().default('0'),
+  taxRateId: uuid('tax_rate_id'), taxSnapshot: jsonb('tax_snapshot'), catalogItemId: uuid('catalog_item_id'), catalogSnapshot: jsonb('catalog_snapshot'),
   netAmount: numeric('net_amount', { precision: 19, scale: 4 }).notNull(), taxAmount: numeric('tax_amount', { precision: 19, scale: 4 }).notNull(), totalAmount: numeric('total_amount', { precision: 19, scale: 4 }).notNull()
 }, (table) => [uniqueIndex('invoice_lines_workspace_id_unique').on(table.workspaceId, table.id), uniqueIndex('invoice_lines_position_unique').on(table.workspaceId, table.invoiceId, table.position)]);
 
@@ -371,19 +372,20 @@ export const businessDocuments = pgTable('business_documents', {
 
 export const invoicePayments = pgTable('invoice_payments', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), invoiceId: uuid('invoice_id').notNull(), transactionId: uuid('transaction_id').notNull(),
-  accountId: uuid('account_id').notNull(), categoryId: uuid('category_id').notNull(), amount: numeric('amount', { precision: 19, scale: 4 }).notNull(), currency: varchar('currency', { length: 3 }).notNull(),
+  accountId: uuid('account_id').notNull(), categoryId: uuid('category_id').notNull(), amount: numeric('amount', { precision: 19, scale: 4 }).notNull(), refundedAmount: numeric('refunded_amount', {precision:19,scale:4}).notNull().default('0'), currency: varchar('currency', { length: 3 }).notNull(),
   paidOn: date('paid_on').notNull(), reference: text('reference'), createdBy: text('created_by').references(() => user.id), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   reversedAt: timestamp('reversed_at', { withTimezone: true }), reversedBy: text('reversed_by').references(() => user.id), reversalReason: text('reversal_reason'), reversalEffectiveOn: date('reversal_effective_on')
 }, (table) => [uniqueIndex('invoice_payments_transaction_unique').on(table.workspaceId, table.transactionId), index('invoice_payments_invoice_idx').on(table.workspaceId, table.invoiceId, table.paidOn)]);
 
 export const invoiceDeliveries = pgTable('invoice_deliveries', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), invoiceId: uuid('invoice_id').notNull(), documentId: uuid('document_id'),
-  purpose: text('purpose', { enum: ['invoice','reminder'] }).notNull().default('invoice'), reminderMessageSnapshot: text('reminder_message_snapshot'),
+  paymentRequestId: uuid('payment_request_id'),
+  purpose: text('purpose', { enum: ['invoice','reminder','payment_link'] }).notNull().default('invoice'), reminderMessageSnapshot: text('reminder_message_snapshot'),
   requestedBy: text('requested_by').notNull().references(() => user.id), recipientSnapshot: text('recipient_snapshot').notNull(), locale: text('locale').notNull(),
   state: text('state', { enum: ['pending', 'queued', 'sending', 'accepted', 'failed', 'cancelled', 'uncertain'] }).notNull().default('pending'), attempts: integer('attempts').notNull().default(0),
   nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(), leaseUntil: timestamp('lease_until', { withTimezone: true }), acceptedAt: timestamp('accepted_at', { withTimezone: true }),
   providerMessageId: text('provider_message_id'), errorCode: text('error_code'), idempotencyKey: text('idempotency_key').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
-}, (table) => [uniqueIndex('invoice_deliveries_idempotency_unique').on(table.workspaceId, table.idempotencyKey), index('invoice_deliveries_pending_idx').on(table.state, table.nextAttemptAt), index('invoice_deliveries_purpose_idx').on(table.workspaceId, table.purpose, table.state, table.nextAttemptAt)]);
+}, (table) => [foreignKey({name:'invoice_deliveries_payment_request_fkey',columns:[table.workspaceId,table.paymentRequestId],foreignColumns:[paymentRequests.workspaceId,paymentRequests.id]}), uniqueIndex('invoice_deliveries_idempotency_unique').on(table.workspaceId, table.idempotencyKey), index('invoice_deliveries_pending_idx').on(table.state, table.nextAttemptAt), index('invoice_deliveries_purpose_idx').on(table.workspaceId, table.purpose, table.state, table.nextAttemptAt)]);
 
 export const attachments = pgTable('attachments', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
@@ -620,3 +622,374 @@ export const netWorthSnapshots=pgTable('net_worth_snapshots',{
 export const netWorthSnapshotLines=pgTable('net_worth_snapshot_lines',{
  ...pfIdentity(),snapshotId:uuid('snapshot_id').notNull().references(()=>netWorthSnapshots.id),sourceId:uuid('source_id').notNull(),sourceType:text('source_type').notNull(),name:text('name').notNull(),kind:text('kind').notNull(),currency:varchar('currency',{length:3}).notNull(),sourceAmount:pfMoney('source_amount'),sourceDate:date('source_date'),rate:numeric('rate',{precision:28,scale:12}),rateDate:date('rate_date'),baseAmount:pfMoney('base_amount'),status:text('status').notNull()
 });
+
+
+export const businessTaxSettings = pgTable('business_tax_settings', {
+  workspaceId: uuid('workspace_id').primaryKey().references(() => workspaces.id),
+  jurisdiction: text('jurisdiction').notNull().default('ID'), enabled: boolean('enabled').notNull().default(false),
+  version: integer('version').notNull().default(1), updatedBy: text('updated_by').references(() => user.id),
+  updatedAt: timestamp('updated_at', {withTimezone:true}).notNull().defaultNow()
+});
+export const businessTaxRates = pgTable('business_tax_rates', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+  name: text('name').notNull(), statutoryRate: numeric('statutory_rate', {precision:7,scale:4}).notNull(),
+  baseNumerator: integer('base_numerator').notNull().default(1), baseDenominator: integer('base_denominator').notNull().default(1),
+  inclusive: boolean('inclusive').notNull().default(false), effectiveFrom: date('effective_from').notNull(), effectiveTo: date('effective_to'),
+  applicability: text('applicability').notNull(), createdBy: text('created_by').notNull().references(() => user.id),
+  createdAt: timestamp('created_at', {withTimezone:true}).notNull().defaultNow(), archivedAt: timestamp('archived_at', {withTimezone:true})
+}, table => [uniqueIndex('business_tax_rates_workspace_id_unique').on(table.workspaceId,table.id)]);
+
+export const businessInvitations = pgTable('business_invitations', {
+ id:uuid('id').defaultRandom().primaryKey(),workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id),
+ emailHash:text('email_hash').notNull(),emailSnapshot:text('email_snapshot').notNull(),role:text('role',{enum:['accountant','staff','viewer']}).notNull(),
+ tokenSnapshot:text('token_snapshot'),emailLocale:text('email_locale').notNull().default('en'),emailState:text('email_state').notNull().default('not_requested'),emailAttempts:integer('email_attempts').notNull().default(0),emailLeaseUntil:timestamp('email_lease_until',{withTimezone:true}),emailNextAttemptAt:timestamp('email_next_attempt_at',{withTimezone:true}).notNull().defaultNow(),
+ tokenHash:text('token_hash').notNull().unique(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+ createdBy:text('created_by').references(()=>user.id),acceptedBy:text('accepted_by').references(()=>user.id),
+ acceptedAt:timestamp('accepted_at',{withTimezone:true}),revokedAt:timestamp('revoked_at',{withTimezone:true}),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()
+},t=>[uniqueIndex('business_invitations_pending_email').on(t.workspaceId,t.emailHash).where(sql`${t.acceptedAt} IS NULL AND ${t.revokedAt} IS NULL`)]);
+
+export const businessContacts=pgTable('business_contacts',{
+ id:uuid('id').defaultRandom().primaryKey(),workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id),name:text('name').notNull(),kind:text('kind').notNull(),details:jsonb('details').notNull(),version:integer('version').notNull().default(1),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),archivedAt:timestamp('archived_at',{withTimezone:true})
+},t=>[uniqueIndex('business_contacts_workspace_id_unique').on(t.workspaceId,t.id)]);
+export const catalogItems=pgTable('catalog_items',{
+ id:uuid('id').defaultRandom().primaryKey(),workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id),sku:text('sku').notNull(),name:text('name').notNull(),kind:text('kind').notNull(),unit:text('unit').notNull(),description:text('description').notNull(),unitPrice:numeric('unit_price',{precision:19,scale:4}).notNull(),currency:varchar('currency',{length:3}).notNull(),taxRateId:uuid('tax_rate_id'),version:integer('version').notNull().default(1),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),archivedAt:timestamp('archived_at',{withTimezone:true})
+},t=>[uniqueIndex('catalog_items_workspace_id_unique').on(t.workspaceId,t.id),uniqueIndex('catalog_items_sku').on(t.workspaceId,sql`lower(${t.sku})`),foreignKey({columns:[t.workspaceId,t.taxRateId],foreignColumns:[businessTaxRates.workspaceId,businessTaxRates.id]})]);
+
+// Business V2 columns; authoritative RLS, checks, and composite constraints are in migrations 0034–0038.
+export const businessProjects=pgTable('business_projects',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ name:text('name').notNull(),
+ clientId:uuid('client_id'),
+ archivedAt:timestamp('archived_at',{withTimezone:true}),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[
+ check('business_projects_name_check',sql`((length(btrim(name)) >= 1) AND (length(btrim(name)) <= 200))`),
+ foreignKey({name:'business_projects_workspace_id_client_id_fkey',columns:[t.workspaceId,t.clientId],foreignColumns:[businessContacts.workspaceId,businessContacts.id]}),
+ foreignKey({name:'business_projects_workspace_id_fkey',columns:[t.workspaceId],foreignColumns:[workspaces.id]}),
+ unique('business_projects_workspace_id_id_key').on(t.workspaceId,t.id)
+]);
+export const businessTaxReminders=pgTable('business_tax_reminders',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ name:text('name').notNull(),
+ dueOn:date('due_on').notNull(),
+ completedAt:timestamp('completed_at',{withTimezone:true}),
+ createdBy:text('created_by').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[
+ foreignKey({name:'business_tax_reminders_created_by_fkey',columns:[t.createdBy],foreignColumns:[user.id]}),
+ check('business_tax_reminders_name_check',sql`((length(btrim(name)) >= 1) AND (length(btrim(name)) <= 200))`),
+ foreignKey({name:'business_tax_reminders_workspace_id_fkey',columns:[t.workspaceId],foreignColumns:[workspaces.id]})
+]);
+export const paymentConnections=pgTable('payment_connections',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ provider:text('provider').notNull().default('pakasir'),
+ sandbox:boolean('sandbox').notNull(),
+ clientId:text('client_id').notNull(),
+ secretKey:text('secret_key').notNull(),
+ webhookSecret:text('webhook_secret'),
+ accountId:uuid('account_id').notNull(),
+ categoryId:uuid('category_id').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+ disabledAt:timestamp('disabled_at',{withTimezone:true}),
+},t=>[
+ check('payment_connections_provider_check',sql`provider IN ('doku','pakasir')`),
+ check('payment_connections_pakasir_secret_check',sql`provider <> 'pakasir' OR webhook_secret IS NOT NULL`),
+ foreignKey({name:'payment_connections_workspace_id_account_id_fkey',columns:[t.workspaceId,t.accountId],foreignColumns:[accounts.workspaceId,accounts.id]}),
+ foreignKey({name:'payment_connections_workspace_id_category_id_fkey',columns:[t.workspaceId,t.categoryId],foreignColumns:[categories.workspaceId,categories.id]}),
+ foreignKey({name:'payment_connections_workspace_id_fkey',columns:[t.workspaceId],foreignColumns:[workspaces.id]}),
+ unique('payment_connections_workspace_id_id_key').on(t.workspaceId,t.id),
+ uniqueIndex('payment_connections_active').on(t.workspaceId,t.provider,t.sandbox).where(sql`(disabled_at IS NULL)`)
+]);
+export const paymentRefunds=pgTable('payment_refunds',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ requestId:uuid('request_id').notNull(),
+ invoicePaymentId:uuid('invoice_payment_id'),
+ transactionId:uuid('transaction_id').notNull(),
+ amount:numeric('amount',{precision:19,scale:4}).notNull(),
+ currency:varchar('currency',{length:3}).notNull(),
+ paidOn:date('paid_on').notNull(),
+ kind:text('kind').notNull(),
+ reason:text('reason').notNull(),
+ idempotencyKey:text('idempotency_key').notNull(),
+ requestHash:text('request_hash').notNull(),
+ createdBy:text('created_by').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+ reversedAt:timestamp('reversed_at',{withTimezone:true}),
+ reversalEffectiveOn:date('reversal_effective_on'),
+ reversalReason:text('reversal_reason'),
+},t=>[
+ check('payment_refunds_amount_check',sql`(amount > (0)::numeric)`),
+ foreignKey({name:'payment_refunds_created_by_fkey',columns:[t.createdBy],foreignColumns:[user.id]}),
+ check('payment_refunds_kind_check',sql`(kind = ANY (ARRAY['refund'::text, 'chargeback'::text]))`),
+ unique('payment_refunds_workspace_id_id_key').on(t.workspaceId,t.id),
+ unique('payment_refunds_workspace_id_idempotency_key_key').on(t.workspaceId,t.idempotencyKey),
+ foreignKey({name:'payment_refunds_workspace_id_invoice_payment_id_fkey',columns:[t.workspaceId,t.invoicePaymentId],foreignColumns:[invoicePayments.workspaceId,invoicePayments.id]}),
+ foreignKey({name:'payment_refunds_workspace_id_request_id_fkey',columns:[t.workspaceId,t.requestId],foreignColumns:[paymentRequests.workspaceId,paymentRequests.id]}),
+ foreignKey({name:'payment_refunds_workspace_id_transaction_id_fkey',columns:[t.workspaceId,t.transactionId],foreignColumns:[transactions.workspaceId,transactions.id]}),
+ unique('payment_refunds_workspace_id_transaction_id_key').on(t.workspaceId,t.transactionId)
+]);
+export const paymentRequestFees=pgTable('payment_request_fees',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ requestId:uuid('request_id').notNull(),
+ transactionId:uuid('transaction_id').notNull(),
+ amount:numeric('amount',{precision:19,scale:4}).notNull(),
+ currency:varchar('currency',{length:3}).notNull(),
+ paidOn:date('paid_on').notNull(),
+ idempotencyKey:text('idempotency_key').notNull(),
+ requestHash:text('request_hash').notNull(),
+ createdBy:text('created_by').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+ reversedAt:timestamp('reversed_at',{withTimezone:true}),
+ reversalEffectiveOn:date('reversal_effective_on'),
+ reversalReason:text('reversal_reason'),
+},t=>[
+ check('payment_request_fees_amount_check',sql`(amount > (0)::numeric)`),
+ foreignKey({name:'payment_request_fees_created_by_fkey',columns:[t.createdBy],foreignColumns:[user.id]}),
+ unique('payment_request_fees_workspace_id_id_key').on(t.workspaceId,t.id),
+ unique('payment_request_fees_workspace_id_idempotency_key_key').on(t.workspaceId,t.idempotencyKey),
+ foreignKey({name:'payment_request_fees_workspace_id_request_id_fkey',columns:[t.workspaceId,t.requestId],foreignColumns:[paymentRequests.workspaceId,paymentRequests.id]}),
+ foreignKey({name:'payment_request_fees_workspace_id_transaction_id_fkey',columns:[t.workspaceId,t.transactionId],foreignColumns:[transactions.workspaceId,transactions.id]}),
+ unique('payment_request_fees_workspace_id_transaction_id_key').on(t.workspaceId,t.transactionId)
+]);
+export const paymentRequests=pgTable('payment_requests',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ connectionId:uuid('connection_id').notNull(),
+ invoiceId:uuid('invoice_id').notNull(),
+ accountId:uuid('account_id').notNull(),
+ categoryId:uuid('category_id').notNull(),
+ amount:numeric('amount',{precision:19,scale:4}).notNull(),
+ currency:varchar('currency',{length:3}).notNull().default('IDR'),
+ providerReference:text('provider_reference').notNull(),
+ providerTxnId:text('provider_txn_id'),
+ checkoutMethod:text('checkout_method').notNull().default('hosted'),
+ publicToken:text('public_token'),
+ qrString:text('qr_string'),
+ providerFee:numeric('provider_fee',{precision:19,scale:4}),
+ totalPayment:numeric('total_payment',{precision:19,scale:4}),
+ providerRequestId:text('provider_request_id').notNull(),
+ idempotencyKey:text('idempotency_key').notNull(),
+ requestHash:text('request_hash').notNull(),
+ qrisOnly:boolean('qris_only').notNull(),
+ state:text('state').notNull().default('creating'),
+ paymentUrl:text('payment_url'),
+ providerExpiry:text('provider_expiry'),
+ providerStatus:jsonb('provider_status'),
+ paymentId:uuid('payment_id'),
+ createdBy:text('created_by').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+ updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+ nextCheckAt:timestamp('next_check_at',{withTimezone:true}).notNull(),
+ leaseUntil:timestamp('lease_until',{withTimezone:true}),
+ checkAttempts:integer('check_attempts').notNull().default(0),
+ failureCode:text('failure_code'),
+ unappliedTransactionId:uuid('unapplied_transaction_id'),
+ netSettlementSourceId:uuid('net_settlement_source_id'),netSettlementHash:text('net_settlement_hash'),
+},t=>[
+ check('payment_requests_checkout_method_check',sql`checkout_method IN ('hosted','qris')`),
+ check('payment_requests_qris_check',sql`checkout_method <> 'qris' OR (qris_only AND public_token IS NOT NULL AND public_token ~ '^[0-9a-f]{64}$')`),
+ check('payment_requests_amount_check',sql`((amount > (0)::numeric) AND (amount = trunc(amount)) AND (amount < ('1000000000000'::bigint)::numeric))`),
+ foreignKey({name:'payment_requests_created_by_fkey',columns:[t.createdBy],foreignColumns:[user.id]}),
+ check('payment_requests_currency_check',sql`((currency)::text = 'IDR'::text)`),
+ unique('payment_requests_public_token_key').on(t.publicToken),
+ unique('payment_requests_provider_reference_key').on(t.providerReference),
+ unique('payment_requests_provider_request_id_key').on(t.providerRequestId),
+ check('payment_requests_state_check',sql`(state = ANY (ARRAY['creating'::text, 'ready'::text, 'uncertain'::text, 'paid'::text, 'expired'::text, 'reconciliation'::text, 'partially_refunded'::text, 'refunded'::text]))`),
+ foreignKey({name:'payment_requests_workspace_id_account_id_fkey',columns:[t.workspaceId,t.accountId],foreignColumns:[accounts.workspaceId,accounts.id]}),
+ foreignKey({name:'payment_requests_workspace_id_category_id_fkey',columns:[t.workspaceId,t.categoryId],foreignColumns:[categories.workspaceId,categories.id]}),
+ foreignKey({name:'payment_requests_workspace_id_connection_id_fkey',columns:[t.workspaceId,t.connectionId],foreignColumns:[paymentConnections.workspaceId,paymentConnections.id]}),
+ unique('payment_requests_workspace_id_id_key').on(t.workspaceId,t.id),
+ unique('payment_requests_workspace_id_idempotency_key_key').on(t.workspaceId,t.idempotencyKey),
+ foreignKey({name:'payment_requests_workspace_id_invoice_id_fkey',columns:[t.workspaceId,t.invoiceId],foreignColumns:[invoices.workspaceId,invoices.id]}),
+ foreignKey({name:'payment_requests_workspace_id_net_settlement_source_id_fkey',columns:[t.workspaceId,t.netSettlementSourceId],foreignColumns:[transactions.workspaceId,transactions.id]}),
+ foreignKey({name:'payment_requests_workspace_id_payment_id_fkey',columns:[t.workspaceId,t.paymentId],foreignColumns:[invoicePayments.workspaceId,invoicePayments.id]}),
+ foreignKey({name:'payment_requests_workspace_id_unapplied_transaction_id_fkey',columns:[t.workspaceId,t.unappliedTransactionId],foreignColumns:[transactions.workspaceId,transactions.id]}),
+ index('payment_requests_due').on(t.nextCheckAt).where(sql`(state = ANY (ARRAY['creating'::text, 'ready'::text, 'uncertain'::text]))`),
+ uniqueIndex('payment_requests_net_source').on(t.workspaceId,t.netSettlementSourceId).where(sql`(net_settlement_source_id IS NOT NULL)`),
+ uniqueIndex('payment_requests_open_invoice').on(t.workspaceId,t.invoiceId).where(sql`(state = ANY (ARRAY['creating'::text, 'ready'::text, 'uncertain'::text]))`)
+]);
+export const paymentWebhookEvents=pgTable('payment_webhook_events',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ connectionId:uuid('connection_id').notNull(),
+ requestId:text('request_id').notNull(),
+ bodyHash:text('body_hash').notNull(),
+ paymentRequestId:uuid('payment_request_id'),
+ status:jsonb('status').notNull(),
+ receivedAt:timestamp('received_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[
+ unique('payment_webhook_events_connection_id_request_id_key').on(t.connectionId,t.requestId),
+ foreignKey({name:'payment_webhook_events_workspace_id_connection_id_fkey',columns:[t.workspaceId,t.connectionId],foreignColumns:[paymentConnections.workspaceId,paymentConnections.id]}),
+ foreignKey({name:'payment_webhook_events_workspace_id_payment_request_id_fkey',columns:[t.workspaceId,t.paymentRequestId],foreignColumns:[paymentRequests.workspaceId,paymentRequests.id]})
+]);
+export const projectAllocations=pgTable('project_allocations',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ projectId:uuid('project_id').notNull(),
+ transactionId:uuid('transaction_id'),
+ invoiceLineId:uuid('invoice_line_id'),
+ amount:numeric('amount',{precision:19,scale:4}).notNull(),
+ currency:varchar('currency',{length:3}).notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[
+ check('project_allocations_amount_check',sql`(amount > (0)::numeric)`),
+ check('project_allocations_check',sql`((transaction_id IS NULL) <> (invoice_line_id IS NULL))`),
+ unique('project_allocations_project_id_invoice_line_id_key').on(t.projectId,t.invoiceLineId),
+ unique('project_allocations_project_id_transaction_id_key').on(t.projectId,t.transactionId),
+ foreignKey({name:'project_allocations_workspace_id_invoice_line_id_fkey',columns:[t.workspaceId,t.invoiceLineId],foreignColumns:[invoiceLines.workspaceId,invoiceLines.id]}),
+ foreignKey({name:'project_allocations_workspace_id_project_id_fkey',columns:[t.workspaceId,t.projectId],foreignColumns:[businessProjects.workspaceId,businessProjects.id]}),
+ foreignKey({name:'project_allocations_workspace_id_transaction_id_fkey',columns:[t.workspaceId,t.transactionId],foreignColumns:[transactions.workspaceId,transactions.id]})
+]);
+export const recurringInvoiceOccurrences=pgTable('recurring_invoice_occurrences',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ templateId:uuid('template_id').notNull(),
+ scheduledOn:date('scheduled_on').notNull(),
+ templateVersion:integer('template_version').notNull(),
+ payload:jsonb('payload').notNull(),
+ invoiceId:uuid('invoice_id'),
+ state:text('state').notNull().default('pending'),
+ autoIssue:boolean('auto_issue').notNull(),
+ autoSend:boolean('auto_send').notNull(),
+ requestedBy:text('requested_by').notNull(),
+ dueDays:integer('due_days').notNull(),
+ attempts:integer('attempts').notNull().default(0),
+ leaseUntil:timestamp('lease_until',{withTimezone:true}),
+ nextAttemptAt:timestamp('next_attempt_at',{withTimezone:true}).notNull().defaultNow(),
+ failureCode:text('failure_code'),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[
+ foreignKey({name:'recurring_invoice_occurrences_requested_by_fkey',columns:[t.requestedBy],foreignColumns:[user.id]}),
+ check('recurring_invoice_occurrences_state_check',sql`(state = ANY (ARRAY['pending'::text, 'processing'::text, 'draft'::text, 'issued'::text, 'queued'::text, 'sent'::text, 'failed'::text]))`),
+ unique('recurring_invoice_occurrences_template_id_scheduled_on_key').on(t.templateId,t.scheduledOn),
+ unique('recurring_invoice_occurrences_workspace_id_id_key').on(t.workspaceId,t.id),
+ foreignKey({name:'recurring_invoice_occurrences_workspace_id_invoice_id_fkey',columns:[t.workspaceId,t.invoiceId],foreignColumns:[invoices.workspaceId,invoices.id]}),
+ foreignKey({name:'recurring_invoice_occurrences_workspace_id_template_id_fkey',columns:[t.workspaceId,t.templateId],foreignColumns:[recurringInvoiceTemplates.workspaceId,recurringInvoiceTemplates.id]}),
+ index('recurring_invoice_retry').on(t.state,t.nextAttemptAt)
+]);
+export const recurringInvoiceTemplates=pgTable('recurring_invoice_templates',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ name:text('name').notNull(),
+ anchorDate:date('anchor_date').notNull(),
+ frequency:text('frequency').notNull(),
+ interval:integer('interval').notNull(),
+ dueDays:integer('due_days').notNull(),
+ endDate:date('end_date'),
+ active:boolean('active').notNull().default(true),
+ autoIssue:boolean('auto_issue').notNull().default(false),
+ autoSend:boolean('auto_send').notNull().default(false),
+ version:integer('version').notNull().default(1),
+ payload:jsonb('payload').notNull(),
+ nextIndex:integer('next_index').notNull().default(0),
+ createdBy:text('created_by').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+ updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+ nextScanAt:timestamp('next_scan_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[
+ check('recurring_invoice_templates_check',sql`((end_date IS NULL) OR (end_date >= anchor_date))`),
+ check('recurring_invoice_templates_check1',sql`((NOT auto_send) OR auto_issue)`),
+ foreignKey({name:'recurring_invoice_templates_created_by_fkey',columns:[t.createdBy],foreignColumns:[user.id]}),
+ check('recurring_invoice_templates_due_days_check',sql`((due_days >= 0) AND (due_days <= 365))`),
+ check('recurring_invoice_templates_frequency_check',sql`(frequency = ANY (ARRAY['day'::text, 'week'::text, 'month'::text, 'year'::text]))`),
+ check('recurring_invoice_templates_interval_check',sql`(("interval" >= 1) AND ("interval" <= 120))`),
+ check('recurring_invoice_templates_name_check',sql`((length(btrim(name)) >= 1) AND (length(btrim(name)) <= 200))`),
+ foreignKey({name:'recurring_invoice_templates_workspace_id_fkey',columns:[t.workspaceId],foreignColumns:[workspaces.id]}),
+ unique('recurring_invoice_templates_workspace_id_id_key').on(t.workspaceId,t.id)
+]);
+export const vendorBillLines=pgTable('vendor_bill_lines',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ billId:uuid('bill_id').notNull(),
+ position:integer('position').notNull(),
+ description:text('description').notNull(),
+ quantity:numeric('quantity',{precision:19,scale:4}).notNull(),
+ unitPrice:numeric('unit_price',{precision:19,scale:4}).notNull(),
+ discountAmount:numeric('discount_amount',{precision:19,scale:4}).notNull(),
+ taxRate:numeric('tax_rate',{precision:7,scale:4}).notNull(),
+ netAmount:numeric('net_amount',{precision:19,scale:4}).notNull(),
+ taxAmount:numeric('tax_amount',{precision:19,scale:4}).notNull(),
+ totalAmount:numeric('total_amount',{precision:19,scale:4}).notNull(),
+ taxSnapshot:jsonb('tax_snapshot'),
+},t=>[
+ unique('vendor_bill_lines_bill_id_position_key').on(t.billId,t.position),
+ foreignKey({name:'vendor_bill_lines_workspace_id_bill_id_fkey',columns:[t.workspaceId,t.billId],foreignColumns:[vendorBills.workspaceId,vendorBills.id]}),
+ unique('vendor_bill_lines_workspace_id_id_key').on(t.workspaceId,t.id)
+]);
+export const vendorBillPayments=pgTable('vendor_bill_payments',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ billId:uuid('bill_id').notNull(),
+ transactionId:uuid('transaction_id').notNull(),
+ amount:numeric('amount',{precision:19,scale:4}).notNull(),
+ currency:varchar('currency',{length:3}).notNull(),
+ paidOn:date('paid_on').notNull(),
+ idempotencyKey:text('idempotency_key').notNull(),
+ requestHash:text('request_hash').notNull(),
+ createdBy:text('created_by').notNull(),
+ reversedAt:timestamp('reversed_at',{withTimezone:true}),
+ reversalEffectiveOn:date('reversal_effective_on'),
+ reversalReason:text('reversal_reason'),
+},t=>[
+ check('vendor_bill_payments_amount_check',sql`(amount > (0)::numeric)`),
+ foreignKey({name:'vendor_bill_payments_created_by_fkey',columns:[t.createdBy],foreignColumns:[user.id]}),
+ foreignKey({name:'vendor_bill_payments_workspace_id_bill_id_fkey',columns:[t.workspaceId,t.billId],foreignColumns:[vendorBills.workspaceId,vendorBills.id]}),
+ unique('vendor_bill_payments_workspace_id_id_key').on(t.workspaceId,t.id),
+ unique('vendor_bill_payments_workspace_id_idempotency_key_key').on(t.workspaceId,t.idempotencyKey),
+ foreignKey({name:'vendor_bill_payments_workspace_id_transaction_id_fkey',columns:[t.workspaceId,t.transactionId],foreignColumns:[transactions.workspaceId,transactions.id]}),
+ unique('vendor_bill_payments_workspace_id_transaction_id_key').on(t.workspaceId,t.transactionId)
+]);
+export const vendorBills=pgTable('vendor_bills',{
+ id:uuid('id').defaultRandom().primaryKey(),
+ workspaceId:uuid('workspace_id').notNull(),
+ vendorId:uuid('vendor_id').notNull(),
+ vendorSnapshot:jsonb('vendor_snapshot').notNull(),
+ supplierNumber:text('supplier_number').notNull(),
+ issueDate:date('issue_date').notNull(),
+ dueDate:date('due_date').notNull(),
+ currency:varchar('currency',{length:3}).notNull(),
+ currencyScale:integer('currency_scale').notNull(),
+ state:text('state').notNull().default('draft'),
+ subtotal:numeric('subtotal',{precision:19,scale:4}).notNull(),
+ discountTotal:numeric('discount_total',{precision:19,scale:4}).notNull(),
+ taxTotal:numeric('tax_total',{precision:19,scale:4}).notNull(),
+ total:numeric('total',{precision:19,scale:4}).notNull(),
+ issuedAt:timestamp('issued_at',{withTimezone:true}),
+ voidEffectiveOn:date('void_effective_on'),
+ voidReason:text('void_reason'),
+ version:integer('version').notNull().default(1),
+ createdBy:text('created_by').notNull(),
+ createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[
+ check('vendor_bills_check',sql`(due_date >= issue_date)`),
+ foreignKey({name:'vendor_bills_created_by_fkey',columns:[t.createdBy],foreignColumns:[user.id]}),
+ check('vendor_bills_state_check',sql`(state = ANY (ARRAY['draft'::text, 'open'::text, 'void'::text]))`),
+ check('vendor_bills_supplier_number_check',sql`((length(btrim(supplier_number)) >= 1) AND (length(btrim(supplier_number)) <= 100))`),
+ check('vendor_bills_total_check',sql`(total > (0)::numeric)`),
+ foreignKey({name:'vendor_bills_workspace_id_fkey',columns:[t.workspaceId],foreignColumns:[workspaces.id]}),
+ unique('vendor_bills_workspace_id_id_key').on(t.workspaceId,t.id),
+ foreignKey({name:'vendor_bills_workspace_id_vendor_id_fkey',columns:[t.workspaceId,t.vendorId],foreignColumns:[businessContacts.workspaceId,businessContacts.id]}),
+ uniqueIndex('vendor_bills_supplier_number').on(t.workspaceId,t.vendorId,sql`lower(supplier_number)`)
+]);
+
+// Accrual adjustments extend the immutable cash journal; cash balances remain authoritative.
+export const businessAccountingSettings=pgTable('business_accounting_settings',{
+ workspaceId:uuid('workspace_id').primaryKey().references(()=>workspaces.id),cutoverOn:date('cutover_on').notNull(),closedThrough:date('closed_through'),policyVersion:integer('policy_version').notNull().default(1),activatedBy:text('activated_by').references(()=>user.id),activatedAt:timestamp('activated_at',{withTimezone:true}).notNull().defaultNow()
+});
+export const businessAccountingReviews=pgTable('business_accounting_reviews',{
+ id:uuid('id').primaryKey().defaultRandom(),workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id),cutoverOn:date('cutover_on').notNull(),fingerprint:text('fingerprint').notNull(),plan:jsonb('plan').notNull(),state:text('state').notNull().default('draft'),createdBy:text('created_by').references(()=>user.id),reviewedBy:text('reviewed_by').references(()=>user.id),reviewReference:text('review_reference'),reviewedAt:timestamp('reviewed_at',{withTimezone:true}),appliedAt:timestamp('applied_at',{withTimezone:true}),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()
+},t=>[uniqueIndex('business_accounting_reviews_workspace_id').on(t.workspaceId,t.id)]);
+export const businessAccountingEntries=pgTable('business_accounting_entries',{
+ id:uuid('id').primaryKey().defaultRandom(),workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id),sourceKey:text('source_key').notNull(),effectiveDate:date('effective_date').notNull(),reason:text('reason').notNull(),documentKind:text('document_kind'),documentId:uuid('document_id'),createdBy:text('created_by').references(()=>user.id),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()
+},t=>[uniqueIndex('business_accounting_entries_workspace_id').on(t.workspaceId,t.id),uniqueIndex('business_accounting_entries_source').on(t.workspaceId,t.sourceKey)]);
+export const businessAccountingLines=pgTable('business_accounting_lines',{
+ id:uuid('id').primaryKey().defaultRandom(),workspaceId:uuid('workspace_id').notNull(),entryId:uuid('entry_id').notNull(),ledgerAccountId:uuid('ledger_account_id').notNull(),currency:varchar('currency',{length:3}).notNull(),debit:numeric('debit',{precision:19,scale:4}).notNull().default('0'),credit:numeric('credit',{precision:19,scale:4}).notNull().default('0'),baseDebit:numeric('base_debit',{precision:19,scale:4}).notNull().default('0'),baseCredit:numeric('base_credit',{precision:19,scale:4}).notNull().default('0')
+},t=>[foreignKey({columns:[t.workspaceId,t.entryId],foreignColumns:[businessAccountingEntries.workspaceId,businessAccountingEntries.id]}),foreignKey({columns:[t.workspaceId,t.ledgerAccountId],foreignColumns:[ledgerAccounts.workspaceId,ledgerAccounts.id]})]);
+export const businessAccountingRefresh=pgTable('business_accounting_refresh',{
+ workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id),kind:text('kind').notNull(),sourceId:uuid('source_id').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow()
+},t=>[primaryKey({columns:[t.workspaceId,t.kind,t.sourceId]})]);

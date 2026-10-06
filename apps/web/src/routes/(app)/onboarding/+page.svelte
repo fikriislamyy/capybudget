@@ -191,8 +191,14 @@
         const body = await done.json().catch(() => ({}));
         throw new Error(body.message ?? 'Unable to finish onboarding.');
       }
-      await workspace.refreshWorkspaces(firstWorkspaceId);
-      await goto('/dashboard', { invalidateAll: true });
+      const invitedWorkspace = data.invitation?.stage === 'onboarding' ? data.invitation.workspaceId : undefined;
+      if (invitedWorkspace) {
+        const finished = await fetch('/api/business/invitations/flow/finish',{method:'POST'});
+        if (!finished.ok) { await goto('/join',{invalidateAll:true}); return; }
+        const result = await finished.json();
+        await workspace.refreshWorkspaces(result.workspaceId);
+      } else await workspace.refreshWorkspaces(firstWorkspaceId);
+      await goto(invitedWorkspace ? '/invoices' : '/dashboard', { invalidateAll: true });
     } catch (e) {
       error = e instanceof Error ? e.message : 'Unable to finish.';
     } finally {

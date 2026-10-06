@@ -36,5 +36,5 @@ export const load: LayoutServerLoad = async ({ locals, request, url, setHeaders 
   if (status === 423) redirect(303, '/unlock');
   if (!completed && !onWizard) redirect(303, '/onboarding');
   if (completed && onWizard) redirect(303, '/dashboard');
-  return { user: locals.user, onboardingCompleted: completed, appPath: url.pathname, onboarding: onboarding! };
+  return { invitation: locals.invitation, user: locals.user, onboardingCompleted: completed, appPath: url.pathname, onboarding: onboarding! };
 };
