@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { TransactionSql } from 'postgres';
-import { q, reject, makeTransaction, reverseTransaction, dirtyUnusualBaselines, audit, learnCategory, normalizedCategoryMerchant, refreshLearnedCategory, type Actor, type Input } from '../routes';
+import { q, reject, assertUnlinkedBusinessTransaction, makeTransaction, reverseTransaction, dirtyUnusualBaselines, audit, learnCategory, normalizedCategoryMerchant, refreshLearnedCategory, type Actor, type Input } from '../routes';
 const error = (message:string) => { throw Object.assign(new Error(message), {status:409,code:'BULK_CONFLICT'}); };
 export async function bulkPreview(tx:TransactionSql,ws:string,actor:Actor,body:any) {
   if(!body || !['edit','delete','restore'].includes(body.action) || !Array.isArray(body.items) || !body.items.length || body.items.length>100)reject('Choose 1–100 transactions and a valid action.');
@@ -23,6 +23,7 @@ export async function bulkApply(tx:TransactionSql,ws:string,actor:Actor,id:strin
   const rows=await q(tx,'select * from transactions where workspace_id=$1 and id=any($2::uuid[]) order by id for update',[ws,request.items.map((x:any)=>x.id)]);
   if(rows.length!==request.items.length)error('A selected record is unavailable.');
   for(const before of rows){
+    await assertUnlinkedBusinessTransaction(tx,ws,before.id);
     if(before.version!==request.items.find((x:any)=>x.id===before.id).version)error('A selected transaction changed since preview. Preview the batch again.');
     if(request.action==='restore'?!before.deleted_at:before.deleted_at)error('A selected transaction changed deletion state.');
     if(request.action!=='restore'){

@@ -26,7 +26,12 @@
     "db:migrate": "bun --env-file=../../.env run drizzle-kit migrate",
     "db:studio": "bun --env-file=../../.env run drizzle-kit studio",
     "db:cleanup-auth": "bun --env-file=../../.env src/db/cleanup-expired-auth.ts",
-    "db:fresh": "bun --env-file=../../.env scripts/db-fresh.ts"
+    "db:fresh": "bun --env-file=../../.env scripts/db-fresh.ts",
+    "test:business:setup": "bun --env-file=../../.env scripts/business-test-db.ts",
+    "test:business": "bun --env-file=../../.env scripts/business-checks.ts",
+    "test:business:browser": "bun --env-file=../../.env scripts/business-browser-checks.ts",
+    "test:business:mailpit": "BUSINESS_MAILPIT=1 bun --env-file=../../.env scripts/business-checks.ts",
+    "deploy:preflight": "bun --env-file=../../.env scripts/deployment-preflight.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "latest",

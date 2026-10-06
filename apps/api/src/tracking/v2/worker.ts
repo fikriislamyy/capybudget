@@ -2,8 +2,7 @@ import {client} from '../../db';
 import {getAttachment,deleteAttachment} from '../storage';
 import {protectedJson} from '../../security/business-fields';
 import {recognize} from './ocr';
-import {rateFor} from './fx';
-import {workspaceToday} from '../recurrence';
+import {refreshLatestRates} from './fx';
 import {randomUUID} from 'node:crypto';
 import {parseStatement,receiptFields} from './parsers';
 export async function processReceipt(workspaceId:string,userId:string,id:string){
@@ -66,13 +65,21 @@ export async function refreshCaptureMaintenance(){
  const now=Date.now(),rates=Boolean(process.env.CURRENCYFREAKS_API_KEY)&&now-lastRateRefresh>6*60*60*1000,cleanup=now-lastCleanup>60*60*1000;
  if(!rates&&!cleanup)return;lastRateRefresh=rates?now:lastRateRefresh;lastCleanup=cleanup?now:lastCleanup;
  const workspaces=await client`select w.id,w.owner_user_id,w.currency,w.timezone from workspaces w join "user" u on u.id=w.owner_user_id where w.archived_at is null and u.account_status='active'`;
+ const pairs=new Map<string,{source:string;base:string}>();
  for(const ws of workspaces){
   if(cleanup)await cleanCaptureFiles(ws.id,ws.owner_user_id);
-  if(rates)try{await client.begin(async(tx)=>{
+  if(rates)await client.begin(async tx=>{
    await tx`select set_config('app.user_id',${ws.owner_user_id},true),set_config('app.workspace_id',${ws.id},true)`;
    const currencies=await tx`select distinct currency from accounts where workspace_id=${ws.id} and currency<>${ws.currency} and archived_at is null and deleted_at is null`;
-   const today=workspaceToday(ws.timezone);
-   for(const account of currencies)await rateFor(tx,account.currency,ws.currency,today,true);
-  });}catch{console.error('Dated exchange-rate refresh unavailable; foreign-currency posting will wait for dated rates.');}
+   for(const account of currencies)pairs.set(account.currency+':'+ws.currency,{source:account.currency,base:ws.currency});
+  });
+ }
+ if(rates&&pairs.size)try{
+  const result=await client.begin(tx=>refreshLatestRates(tx,[...pairs.values()]));
+  if(result.date&&result.date<new Date().toISOString().slice(0,10))console.info('Exchange rates cached under the provider observation date; newer posting dates still require their own quote.',{rateDate:result.date,pairs:result.pairs});
+ }catch(error){
+  const raw=(error as {code?:string}).code;
+  const code=raw&&/^[A-Z0-9_]{1,60}$/.test(raw)?raw:'FX_REFRESH_FAILED';
+  console.error('Exchange-rate refresh failed; existing dated cached rates remain available.',{code});
  }
 }

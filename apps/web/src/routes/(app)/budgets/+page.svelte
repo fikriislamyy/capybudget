@@ -54,7 +54,7 @@
         <div class="numbers"><span>{t('spent')} <MoneyDisplay amount={item.spent} currency={item.currency} type="expense" size="lg" /></span><span>{t('remaining')} <MoneyDisplay amount={item.remaining} currency={item.currency} size="lg" /></span></div>
         <BudgetPond name={item.name} usedPercent={item.usedPercent} />
         {#if !privacy.hidden && item.usedPercent===null}<p class="caption">{t('zeroBudgetSpend')}</p>{/if}
-        <form class="thresholds" onsubmit={(event)=>saveThresholds(event,item.id)}><label for={`thresholds-${item.id}`}>{t('thresholds')}</label><Input id={`thresholds-${item.id}`} bind:value={thresholds[item.id]} placeholder={item.alertThresholds.join(',')} /><Button variant="outline" size="sm" type="submit">{t('save')}</Button></form>
+        <form class="thresholds" onsubmit={(event)=>saveThresholds(event,item.id)}><label for={`thresholds-${item.id}`}>{t('thresholds')}</label><Input id={`thresholds-${item.id}`} bind:value={thresholds[item.id]} placeholder={item.alertThresholds.join(',')} aria-describedby={`threshold-help-${item.id}`} /><Button variant="outline" size="sm" type="submit">{t('save')}</Button></form><p id={`threshold-help-${item.id}`} class="caption">{ui.locale==='id'?'Masukkan persentase dipisahkan koma, misalnya 80,100. Peringatan dikirim sekali per ambang dalam setiap periode.':'Enter percentages separated by commas, such as 80,100. Each threshold alerts once per budget period.'}</p>
       </Card.Content></Card.Root>{/each}
     {/if}
   </section>

@@ -1,4 +1,8 @@
 <script lang="ts">
+  import InvitationNotice from '$lib/components/business/invitation-notice.svelte';
+  import type { PageData } from './$types';
+  let { data }: { data: PageData } = $props();
+  const invitedEmail = $derived(data.invitation?.email ?? '');
   import PasswordChecklist from '$lib/components/forms/password-checklist.svelte';
   import { meetsPasswordPolicy } from '$lib/password-policy';
   import PasswordInput from '$lib/components/forms/password-input.svelte';
@@ -17,18 +21,18 @@
     if (password !== confirmation) { error = t.passwordMismatch; return; }
     if (busy) return; busy = true;
     try {
-      const result = await authClient.signUp.email({ name: name.trim(), email: email.trim(), password, callbackURL: '/verify-email' });
+      const result = await authClient.signUp.email({ name: name.trim(), email: invitedEmail || email.trim(), password, callbackURL: '/verify-email' });
       if (result.error) throw new Error(result.error.message ?? t.genericError);
-      sessionStorage.setItem('capybudget-pending-email', email.trim());
+      sessionStorage.setItem('capybudget-pending-email', invitedEmail || email.trim());
       await goto('/verify-email');
-    } catch { error = cooldown.seconds > 0 ? 'rate-limited' : t.genericError; } finally { busy = false; }
+    } catch (cause) { error = cooldown.seconds > 0 ? 'rate-limited' : cause instanceof Error ? cause.message : t.genericError; } finally { busy = false; }
   }
 </script>
 <LoadingScope active={!!busy} />
 <Card.Root class="auth-card"><Card.Header><Card.Title role="heading" aria-level={1}>{t.signupTitle}</Card.Title><Card.Description>{t.signupDescription}</Card.Description></Card.Header><Card.Content>
-  <form onsubmit={submit}><Field.FieldGroup>
+  <InvitationNotice invitation={data.invitation} locale={authUi.locale}/><form onsubmit={submit}><Field.FieldGroup>
     <Field.Field><Field.FieldLabel for="name">{t.name}</Field.FieldLabel><Input id="name" autocomplete="name" bind:value={name} required maxlength={100} /></Field.Field>
-    <Field.Field><Field.FieldLabel for="email">{t.email}</Field.FieldLabel><Input id="email" type="email" autocomplete="email" bind:value={email} required maxlength={254} /></Field.Field>
+    <Field.Field><Field.FieldLabel for="email">{t.email}</Field.FieldLabel><Input id="email" type="email" autocomplete="email" value={invitedEmail || email} oninput={(event)=>email=event.currentTarget.value} disabled={!!invitedEmail} required maxlength={254} /></Field.Field>
     <Field.Field><Field.FieldLabel for="password">{t.password}</Field.FieldLabel><PasswordInput id="password"  autocomplete="new-password" bind:value={password} required minlength={12} maxlength={128} aria-describedby="password-requirements" />
       <PasswordChecklist {password} id="password-requirements" /></Field.Field>
     <Field.Field><Field.FieldLabel for="confirm">{t.confirmPassword}</Field.FieldLabel><PasswordInput id="confirm"  autocomplete="new-password" bind:value={confirmation} required minlength={12} maxlength={128} /></Field.Field>

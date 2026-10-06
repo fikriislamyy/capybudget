@@ -1,4 +1,4 @@
-import { formatDate, formatDatesInText } from '../../../../shared/dates';
+import { formatDate, formatDateTime, formatDatesInText } from '../../../../shared/dates';
 import type { EmailMessage } from './types';
 import { appLink, codeCard, detailCard, emailLayout, paragraph } from './layout';
 
@@ -21,6 +21,9 @@ const copy = {
     invoiceTitle: 'Your invoice is ready',
     invoiceText: 'Your invoice is attached as a PDF. You can download it to review the details or keep a copy for your records.',
     invoiceLabel: 'Invoice number',
+    paymentAction:'Pay with QRIS', paymentIntro:'Open your payment page to review the total and pay with QRIS. No CapyBudget login is needed.',
+    paymentExpiry:'Payment link valid until', paymentSandbox:'Sandbox test payment only. Do not send real money.',
+    paymentLinkSubject:'Your invoice payment link', paymentLinkTitle:'Here’s your payment link',
     invoiceReminderSubject: 'A payment reminder for your invoice',
     invoiceReminderTitle: 'A friendly payment reminder',
     billSubject: 'A bill is coming up · CapyBudget', billTitle: 'A little heads-up for your bill',
@@ -49,6 +52,9 @@ const copy = {
     invoiceTitle: 'Faktur Anda sudah siap',
     invoiceText: 'Faktur Anda terlampir sebagai PDF. Unduh untuk meninjau detailnya atau simpan sebagai arsip.',
     invoiceLabel: 'Nomor faktur',
+    paymentAction:'Bayar dengan QRIS', paymentIntro:'Buka halaman pembayaran untuk melihat total dan membayar dengan QRIS. Tidak perlu masuk ke akun CapyBudget.',
+    paymentExpiry:'Tautan pembayaran berlaku sampai', paymentSandbox:'Pembayaran uji sandbox saja. Jangan kirim uang sungguhan.',
+    paymentLinkSubject:'Tautan pembayaran faktur Anda', paymentLinkTitle:'Ini tautan pembayaran Anda',
     invoiceReminderSubject: 'Pengingat pembayaran faktur Anda',
     invoiceReminderTitle: 'Pengingat pembayaran',
     billSubject: 'Tagihan akan jatuh tempo · CapyBudget', billTitle: 'Pengingat kecil untuk tagihan Anda',
@@ -66,6 +72,16 @@ export function renderEmail(message: EmailMessage) {
   const base = { locale: message.locale };
 
   switch (message.kind) {
+    case 'business-invitation': {
+      const id = message.locale === 'id';
+      const title = id ? 'Anda diundang bergabung ke tim' : 'You’re invited to join the team';
+      const intro = id ? `Bergabung ke ${message.businessName} sebagai ${message.role}. Buat akun dengan email ini, verifikasi, lalu terima undangannya. Sudah punya akun? Masuk dengan email yang sama.` : `Join ${message.businessName} as ${message.role}. Create an account with this email, verify it, then accept your invitation. Already have an account? Sign in with the same email.`;
+      const expiry = (id ? 'Undangan berlaku sampai ' : 'Invitation valid until ') + formatDateTime(new Date(message.expiresAt).toISOString());
+      return { subject: title + ' · CapyBudget', text: [title,intro,message.url,expiry,words.ignore].join('\n\n'),
+        html: emailLayout({...base,title,category:words.business,preheader:intro,
+          content:paragraph(intro)+detailCard([{label:id?'Bisnis':'Business',value:message.businessName},{label:'Email',value:message.to}])+paragraph(expiry,true)+paragraph(words.ignore,true),
+          action:{label:id?'Bergabung ke tim':'Join the team',url:message.url},fallbackLabel:words.fallback}) };
+    }
     case 'verification':
       return {
         subject: words.verificationSubject,
@@ -95,22 +111,32 @@ export function renderEmail(message: EmailMessage) {
           action: { label: words.billAction, url } }),
       };
     }
-    case 'invoice-delivery':
+    case 'invoice-delivery': {
+      const note=message.paymentUrl?words.paymentIntro:'';
+      const sandbox=message.paymentUrl&&message.paymentSandbox?words.paymentSandbox:'';
+      const expiry=message.paymentUrl&&message.paymentExpiresAt?`${words.paymentExpiry}: ${formatDateTime(message.paymentExpiresAt,message.locale)}`:'';
       return {
         subject: `${words.invoiceSubject} · ${message.invoiceNumber}`,
-        text: [words.invoiceTitle, '', words.invoiceText, '', `${words.invoiceLabel}: ${message.invoiceNumber}`].join('\n'),
+        text: [words.invoiceTitle, '', words.invoiceText, '', `${words.invoiceLabel}: ${message.invoiceNumber}`,note,sandbox,expiry,message.paymentUrl??''].filter(Boolean).join('\n'),
         html: emailLayout({ ...base, title: words.invoiceTitle, category: words.business,
           preheader: words.invoiceText,
-          content: paragraph(words.invoiceText) + detailCard([{ label: words.invoiceLabel, value: message.invoiceNumber }]) }),
+          content: paragraph(words.invoiceText) + detailCard([{ label: words.invoiceLabel, value: message.invoiceNumber }])+(note?paragraph(note):'')+(sandbox?paragraph(sandbox):'')+(expiry?paragraph(expiry,true):''),
+          ...(message.paymentUrl?{action:{label:words.paymentAction,url:message.paymentUrl},fallbackLabel:words.fallback}:{}) }),
       };
-    case 'invoice-reminder':
+    }
+    case 'invoice-reminder': {
+      const title=message.paymentLinkOnly?words.paymentLinkTitle:words.invoiceReminderTitle;
+      const sandbox=message.paymentUrl&&message.paymentSandbox?words.paymentSandbox:'';
+      const expiry=message.paymentUrl&&message.paymentExpiresAt?`${words.paymentExpiry}: ${formatDateTime(message.paymentExpiresAt,message.locale)}`:'';
       return {
-        subject: `${words.invoiceReminderSubject} · ${message.invoiceNumber}`,
-        text: [words.invoiceReminderTitle, '', formatDatesInText(message.reminderMessage), '', `${words.invoiceLabel}: ${message.invoiceNumber}`].join('\n'),
-        html: emailLayout({ ...base, title: words.invoiceReminderTitle, category: words.business,
-          preheader: words.invoiceReminderTitle,
-          content: paragraph(formatDatesInText(message.reminderMessage)) + detailCard([{ label: words.invoiceLabel, value: message.invoiceNumber }]) }),
+        subject: `${message.paymentLinkOnly?words.paymentLinkSubject:words.invoiceReminderSubject} · ${message.invoiceNumber}`,
+        text: [title, '', formatDatesInText(message.reminderMessage), '', `${words.invoiceLabel}: ${message.invoiceNumber}`,sandbox,expiry,message.paymentUrl??''].filter(Boolean).join('\n'),
+        html: emailLayout({ ...base, title, category: words.business,
+          preheader: title,
+          content: paragraph(formatDatesInText(message.reminderMessage)) + detailCard([{ label: words.invoiceLabel, value: message.invoiceNumber }])+(sandbox?paragraph(sandbox):'')+(expiry?paragraph(expiry,true):''),
+          ...(message.paymentUrl?{action:{label:words.paymentAction,url:message.paymentUrl},fallbackLabel:words.fallback}:{}) }),
       };
+    }
     case 'assistant-alert': {
       const url = appLink('/assistant');
       return {

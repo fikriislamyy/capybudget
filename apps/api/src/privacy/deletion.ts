@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { client } from "../db";
 import { deleteAttachment } from "../tracking/storage";
 import { SecurityError } from "../security/guards";
@@ -32,7 +32,7 @@ export async function deletionPreview(userId: string) {
       blocked,
       backupRetentionDays: 35,
       warning:
-        "Previously downloaded files and delivered emails cannot be recalled. Retained backups expire within 35 days.",
+        "Previously downloaded files and delivered emails cannot be recalled. Retained backups expire within 35 days. Shared business records may retain an anonymous actor for financial history after your access and credentials are removed.",
     };
   });
 }
@@ -211,6 +211,23 @@ export async function eraseSubject(userId: string, workspaceIds: string[]) {
       await tx`delete from verification where identifier=${owner.email} or identifier like ${"%" + owner.email} or value=${userId}`;
     await tx`delete from report_export_cleanup where object_key in (select object_key from privacy_cleanup_tasks c join account_deletion_requests d on d.id=c.request_id where d.subject_id=${userId})`;
     await tx`delete from privacy_exports where user_id=${userId}`;
-    await tx`delete from "user" where id=${userId}`;
+    // Shared business history belongs to that business. Remove access and credentials,
+    // but retain an anonymous actor row when an immutable financial record references it.
+    await tx`delete from workspace_memberships where user_id=${userId}`;
+    try {
+      await tx.savepoint(async sp => { await sp`delete from "user" where id=${userId}`; });
+    } catch (error) {
+      if ((error as {code?:string}).code !== '23503') throw error;
+      await tx`delete from session where user_id=${userId}`;
+      await tx`delete from account where user_id=${userId}`;
+      await tx`delete from two_factor where user_id=${userId}`;
+      await tx`delete from security_devices where user_id=${userId}`;
+      await tx`delete from security_events where user_id=${userId}`;
+      await tx`delete from user_security_settings where user_id=${userId}`;
+      await tx`delete from onboarding_state where user_id=${userId}`;
+      await tx`update "user" set name='Former member',email=${'deleted-'+randomUUID()+'@example.invalid'},
+        email_verified=false,image=null,two_factor_enabled=false,account_status='deleted',security_version=security_version+1,updated_at=now()
+        where id=${userId}`;
+    }
   });
 }

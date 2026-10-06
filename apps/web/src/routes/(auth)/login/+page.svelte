@@ -1,4 +1,8 @@
 <script lang="ts">
+  import InvitationNotice from '$lib/components/business/invitation-notice.svelte';
+  import type { PageData } from './$types';
+  let { data }: { data: PageData } = $props();
+  const invitedEmail = $derived(data.invitation?.email ?? '');
   import PasswordInput from '$lib/components/forms/password-input.svelte';
   import LoadingScope from '$lib/components/shared/loading-scope.svelte';
   import { goto } from '$app/navigation';
@@ -19,10 +23,10 @@
   async function submit(event: SubmitEvent) {
     event.preventDefault(); if (busy) return; busy = true; error = '';
     try {
-      const result = await authClient.signIn.email({ email: email.trim(), password, callbackURL: '/dashboard' });
+      const result = await authClient.signIn.email({ email: invitedEmail || email.trim(), password, callbackURL: invitedEmail ? '/join' : '/dashboard' });
       if (result.error) throw new Error(result.error.message ?? t.genericError);
       if (result.data && 'twoFactorRedirect' in result.data && result.data.twoFactorRedirect) return;
-      await goto('/dashboard', { invalidateAll: true });
+      await goto(invitedEmail ? '/join' : '/dashboard', { invalidateAll: true });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : '';
       error = /verify|verified/i.test(message) ? t.unverified : cooldown.seconds > 0 ? 'rate-limited' : t.genericError;
@@ -31,8 +35,8 @@
 </script>
 <LoadingScope active={!!busy} />
 <Card.Root class="auth-card"><Card.Header><Card.Title role="heading" aria-level={1}>{t.loginTitle}</Card.Title><Card.Description>{t.loginDescription}</Card.Description></Card.Header>
-  <Card.Content><form onsubmit={submit}><Field.FieldGroup>
-    <Field.Field><Field.FieldLabel for="email">{t.email}</Field.FieldLabel><Input id="email" type="email" autocomplete="email" bind:value={email} required maxlength={254} /></Field.Field>
+  <Card.Content><InvitationNotice invitation={data.invitation} locale={authUi.locale}/><form onsubmit={submit}><Field.FieldGroup>
+    <Field.Field><Field.FieldLabel for="email">{t.email}</Field.FieldLabel><Input id="email" type="email" autocomplete="email" value={invitedEmail || email} oninput={(event)=>email=event.currentTarget.value} disabled={!!invitedEmail} required maxlength={254} /></Field.Field>
     <Field.Field><div class="label-row"><Field.FieldLabel for="password">{t.password}</Field.FieldLabel><a href="/forgot-password">{t.forgot}</a></div><PasswordInput id="password"  autocomplete="current-password" bind:value={password} required maxlength={128} /></Field.Field>
     {#if errorMessage}<p class="error" role="alert">{errorMessage} {#if error === t.unverified}<a href="/verify-email">{t.verify}</a>{/if}</p>{/if}
     <Button type="submit" class="submit" disabled={!mounted || busy || cooldown.seconds > 0}>{busy ? '…' : cooldown.seconds > 0 ? t.rateLimited.replace('{seconds}', String(cooldown.seconds)) : t.login}</Button>

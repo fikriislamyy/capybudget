@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NavSection from "$lib/components/layout/nav-section.svelte";
   import StatusScreen from '$lib/components/shared/status-screen.svelte';
   import LoadingScope from '$lib/components/shared/loading-scope.svelte';
   import WorkspaceSwitcher from '$lib/components/layout/workspace-switcher.svelte';
@@ -16,6 +17,7 @@
   } from "$lib/components/layout/workspace-create-form.svelte";
   import {
     NAV_GROUPS,
+    visibleForRole,
     isActiveRoute,
     labelFor,
   } from "$lib/components/layout/nav-config";
@@ -57,6 +59,7 @@
     kind: "personal" | "business";
     currency: string;
     timezone: string;
+    role?: string;
   };
   type WorkspaceState = {
     revision: number;
@@ -91,6 +94,9 @@
     workspaceState.items.find((item) => item.id === workspaceState.selectedId),
   );
   const isBusiness = $derived(activeWorkspace?.kind === "business");
+  const businessRole=$derived(activeWorkspace?.role??'owner');
+  const canWriteFinances=$derived(!isBusiness||['owner','accountant'].includes(businessRole));
+  $effect(()=>{if(workspaceState.ready&&isBusiness&&businessRole==='staff'&&!page.url.pathname.startsWith('/invoices')&&!page.url.pathname.startsWith('/business')&&!page.url.pathname.startsWith('/settings'))void goto('/invoices');});
   setContext("capybudget-workspaces", workspaceState);
   const privacyState: PrivacyState = $state({ hidden: true });
   setContext(PRIVACY_CONTEXT, privacyState);
@@ -344,17 +350,25 @@
     workspaceState.items = [...workspaceState.items, w];
     selectWorkspace(w.id);
   }
+  let noticeRequest=0;
   async function loadNotices() {
-    const id = workspaceState.selectedId;
+    const id = workspaceState.selectedId, current=++noticeRequest;
     if (!id) return;
-    const [response, countResponse] = await Promise.all([
-      fetch(`/api/workspaces/${id}/notifications?limit=8&state=unread`),
-      fetch(`/api/workspaces/${id}/notifications/unread-count`),
-    ]);
-    if (id !== workspaceState.selectedId) return;
-    if (response.ok) notices = (await response.json()).items;
-    if (countResponse.ok)
-      unreadCount = Number((await countResponse.json()).count) || 0;
+    try {
+      const [response, countResponse] = await Promise.all([
+        fetch(`/api/workspaces/${id}/notifications?limit=8&state=unread`),
+        fetch(`/api/workspaces/${id}/notifications/unread-count`),
+      ]);
+      const [list,count]=await Promise.all([
+        response.ok?response.json():null,countResponse.ok?countResponse.json():null,
+      ]);
+      if(id!==workspaceState.selectedId||current!==noticeRequest)return;
+      if(Array.isArray(list?.items))notices=list.items;
+      if(count&&Number.isFinite(Number(count.count)))unreadCount=Number(count.count);
+    } catch {
+      // The inbox page exposes retryable errors; a transient bell refresh must
+      // not interrupt navigation or apply data from another workspace.
+    }
   }
   onMount(() => {
     privacyMode = readPrivacyMode();
@@ -486,11 +500,10 @@
         <nav aria-label={authUi.locale === "id" ? "Navigasi utama" : "Primary"}>
           {#each NAV_GROUPS as group (group.en)}
             {@const entries = group.entries.filter(
-              (e) => !e.businessOnly || isBusiness,
+              (e) => visibleForRole(e,isBusiness,businessRole),
             )}
             {#if entries.length}
-              <section aria-label={labelFor(group, authUi.locale)}>
-                <h2>{labelFor(group, authUi.locale)}</h2>
+              <NavSection name={group.en} label={labelFor(group, authUi.locale)} hrefs={entries.map(entry=>entry.href)}>
                 {#each entries as entry (entry.href)}
                   {@const active = isActiveRoute(page.url.pathname, entry.href)}
                   <a
@@ -505,7 +518,7 @@
                       >{/if}
                   </a>
                 {/each}
-              </section>
+              </NavSection>
             {/if}
           {/each}
         </nav>
@@ -658,13 +671,15 @@
     <MobileNav
       locale={authUi.locale}
       {isBusiness}
+      role={businessRole}
+      {canWriteFinances}
       {lockEnabled}
       {signingOut}
       onQuickAdd={() => (quickAddOpen = true)}
       onLock={lockNow}
       onSignOut={signOut}
     />
-    {#if workspaceState.selectedId && !["/transactions", "/onboarding"].includes(page.url.pathname)}
+    {#if canWriteFinances && workspaceState.selectedId && !["/transactions", "/onboarding"].includes(page.url.pathname)}
       <Button variant="ghost"
         type="button"
         class="fab"
@@ -747,18 +762,6 @@
     align-content: start;
     min-height: 0;
     overflow-y: auto;
-  }
-  nav section {
-    display: grid;
-    gap: 2px;
-  }
-  nav h2 {
-    font-size: 11px;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    color: var(--muted-foreground);
-    margin: 0 0 2px;
-    padding: 0 12px;
   }
   nav a {
     display: flex;

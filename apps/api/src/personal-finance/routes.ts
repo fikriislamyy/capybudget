@@ -1,3 +1,4 @@
+import { authorizeWorkspace } from '../business/permissions';
 import { Elysia } from 'elysia';
 import type { TransactionSql } from 'postgres';
 import { auth } from '../auth';
@@ -43,6 +44,7 @@ async function scoped<T>(request: Request, workspaceId: string, run: (tx: Transa
   try {
     return await client.begin(async (tx) => {
       await q(tx, "select set_config('app.user_id',$1,true),set_config('app.workspace_id',$2,true)", [current.id, workspaceId]);
+      await authorizeWorkspace(tx,workspaceId,current.id,request);
       const [membership] = await q(tx, 'select 1 from workspace_memberships where workspace_id=$1 and user_id=$2', [workspaceId, current.id]);
       if (!membership) throw Object.assign(new Error('Workspace not found.'), { status: 404 });
       return run(tx, current.id);

@@ -2,6 +2,11 @@ export type EmailLocale = 'en' | 'id';
 
 export type EmailMessage = {securityOwnerId?:string;securityGeneration?:number} & (
   | {
+      kind: 'business-invitation';
+      to: string; url: string; businessName: string; role: string; workspaceId: string;
+      invitationId: string; requestedBy: string; locale: EmailLocale; expiresAt: number;
+    }
+  | {
       kind: 'verification';
       to: string;
       otp: string;
@@ -34,6 +39,10 @@ export type EmailMessage = {securityOwnerId?:string;securityGeneration?:number} 
       kind: 'invoice-delivery';
       to: string;
       invoiceNumber: string;
+      paymentUrl?: string;
+      paymentSandbox?: boolean;
+      paymentExpiresAt?: string;
+      paymentLinkOnly?: boolean;
       workspaceId: string;
       deliveryId: string;
       requestedBy: string;
@@ -47,6 +56,10 @@ export type EmailMessage = {securityOwnerId?:string;securityGeneration?:number} 
       deliveryId: string;
       requestedBy: string;
       invoiceNumber: string;
+      paymentUrl?: string;
+      paymentSandbox?: boolean;
+      paymentExpiresAt?: string;
+      paymentLinkOnly?: boolean;
       reminderMessage: string;
       locale: EmailLocale;
       expiresAt: number;
