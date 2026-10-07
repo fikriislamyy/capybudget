@@ -23,6 +23,7 @@ import { businessPaymentRoutes } from './business/payments';
 import { businessDirectoryRoutes } from './business/directory';
 import { businessTeamRoutes } from './business/team';
 import { businessRoutes } from './business/routes';
+import { assistantV2Routes } from './assistant/v2/routes';
 import { assistantRoutes } from './assistant/routes';
 import { reportsRoutes } from './reports/routes';
 import { notificationRoutes } from './notifications/routes';
@@ -70,6 +71,7 @@ export const app = new Elysia()
   .use(businessAnalyticsRoutes)
   .use(paymentAdjustmentRoutes)
   .use(assistantRoutes)
+  .use(assistantV2Routes)
   .use(reportsRoutes)
   .all('/api/auth/*', async ({ request, server }) => {
     const ip = clientIpForRequest(request, server?.requestIP(request)?.address);

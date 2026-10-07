@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-06T09:37:17.353Z",
+  "models": [
+    {
+      "provider": "groq",
+      "text": "openai/gpt-oss-20b",
+      "voice": "whisper-large-v3"
+    },
+    {
+      "provider": "muse",
+      "text": "muse-spark-1.3",
+      "voice": "muse-voice-transcribe-1.0"
+    }
+  ],
+  "checks": [
+    {
+      "name": "groq en grounded chat",
+      "status": "passed"
+    },
+    {
+      "name": "groq id grounded chat",
+      "status": "passed"
+    },
+    {
+      "name": "groq extraction and explicit confirmation",
+      "status": "passed"
+    },
+    {
+      "name": "groq live transcription (test WAV)",
+      "status": "passed"
+    },
+    {
+      "name": "muse en grounded chat",
+      "status": "passed"
+    },
+    {
+      "name": "muse id grounded chat",
+      "status": "passed"
+    },
+    {
+      "name": "muse extraction and explicit confirmation",
+      "status": "passed"
+    },
+    {
+      "name": "muse live transcription (test WAV)",
+      "status": "passed"
+    },
+    {
+      "name": "Weekly check-in → encrypted Redis job → email worker → Mailpit, once",
+      "status": "passed"
+    },
+    {
+      "name": "Monthly check-in → email worker → Mailpit, once",
+      "status": "passed"
+    }
+  ],
+  "providerRequests": [
+    {
+      "provider": "groq",
+      "status": 200
+    },
+    {
+      "provider": "groq",
+      "status": 200
+    },
+    {
+      "provider": "groq",
+      "status": 200
+    },
+    {
+      "provider": "groq",
+      "status": 200
+    },
+    {
+      "provider": "muse",
+      "status": 200
+    },
+    {
+      "provider": "muse",
+      "status": 200
+    },
+    {
+      "provider": "muse",
+      "status": 200
+    },
+    {
+      "provider": "muse",
+      "status": 200
+    }
+  ]
+}

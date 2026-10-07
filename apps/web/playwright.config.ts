@@ -38,7 +38,7 @@ export default defineConfig({
       timeout: 30_000
     },
     {
-      command: `PUBLIC_API_URL=${webOrigin} API_INTERNAL_URL=${apiOrigin} PUBLIC_APP_URL=${webOrigin} BETTER_AUTH_URL=${webOrigin} WEB_ORIGIN=${webOrigin} bun --env-file=../../.env run vite ${process.env.UI_PRODUCTION === '1' ? 'preview' : 'dev'} --host 127.0.0.1 --port ${webPort}`,
+      command: `CAPY_VITE_CACHE_DIR=/tmp/capybudget-playwright-vite-${process.pid} PUBLIC_API_URL=${webOrigin} API_INTERNAL_URL=${apiOrigin} PUBLIC_APP_URL=${webOrigin} BETTER_AUTH_URL=${webOrigin} WEB_ORIGIN=${webOrigin} bun --env-file=../../.env run vite ${process.env.UI_PRODUCTION === '1' ? 'preview' : 'dev'} --host 127.0.0.1 --port ${webPort}`,
       url: `${webOrigin}/login`,
       reuseExistingServer: process.env.UI_REUSE_SERVERS === '1',
       timeout: 60_000

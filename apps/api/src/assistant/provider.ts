@@ -1,7 +1,7 @@
 /** Provider boundary for optional assistant language tasks. Finance facts and writes
  * remain deterministic and server-owned; providers can only return allowlisted IDs
- * and bounded wording. Until the deployment review and consent work is finished,
- * the disabled adapter is the only adapter registered in production.
+ * and bounded wording. MVP categorization and suggestions remain local; optional
+ * V2 language tasks use the configured Groq or Meta Muse adapter.
  */
 export type ProviderCategoryInput = {
   transactionType: 'income' | 'expense';
@@ -25,6 +25,4 @@ export const disabledAssistantProvider: AssistantProvider = {
   async phraseSuggestions() { return null; }
 };
 
-export function assistantProviderAvailable(): boolean {
-  return false;
-}
+export { languageProviderAvailable as assistantProviderAvailable } from "./v2/providers";

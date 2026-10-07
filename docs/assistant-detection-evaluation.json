@@ -1,0 +1,563 @@
+{
+  "detectorVersion": "assistant-detection-v2.2",
+  "fixtureVersion": "synthetic-review-cases-v1",
+  "rules": {
+    "maxRecords": 5000,
+    "maxFindings": 100,
+    "maxEvidence": 50,
+    "duplicateDayWindow": 0,
+    "habitPriorDays": 3,
+    "minimumSamples": 8,
+    "minimumHistoryDays": 4,
+    "historyWindowDays": 90,
+    "maximumSamples": 50,
+    "medianMultiplier": 3,
+    "madMultiplier": 6
+  },
+  "duplicates": {
+    "cases": 28,
+    "truePositives": 8,
+    "falsePositives": 2,
+    "trueNegatives": 17,
+    "falseNegatives": 1,
+    "precision": 0.8,
+    "recall": 0.8888888888888888,
+    "falsePositiveRate": 0.10526315789473684
+  },
+  "unusualSpending": {
+    "cases": 23,
+    "truePositives": 4,
+    "falsePositives": 1,
+    "trueNegatives": 18,
+    "falseNegatives": 0,
+    "precision": 0.8,
+    "recall": 1,
+    "falsePositiveRate": 0.05263157894736842
+  },
+  "automaticAlertsEligible": false,
+  "limitations": [
+    "Synthetic cases use declared review labels; these metrics are not production accuracy or fraud detection rates.",
+    "A matching candidate requires all labeled target IDs. Other findings are reported separately and are not assigned unlabeled ground truth.",
+    "Same-day legitimate repeats and unmarked planned purchases remain ambiguous. Habit suppression also misses some genuine duplicates.",
+    "This V2 detector does not enqueue alerts, reverse payments, block accounts or delete transactions; existing notification rules are unchanged."
+  ],
+  "results": [
+    {
+      "id": "double-grocery-record",
+      "kind": "possible_duplicate",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "manual-and-statement-decimal-padding",
+      "kind": "possible_duplicate",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "merchant-case-and-spacing",
+      "kind": "possible_duplicate",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "unicode-fullwidth-merchant",
+      "kind": "possible_duplicate",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "usd-identical-cents",
+      "kind": "possible_duplicate",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "leap-day-double-record",
+      "kind": "possible_duplicate",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "triple-import-record",
+      "kind": "possible_duplicate",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "maximum-numeric-double-record",
+      "kind": "possible_duplicate",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "daily-coffee-on-consecutive-days",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "established-same-day-commute",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 3,
+      "ambiguity": null
+    },
+    {
+      "id": "established-coffee-habit",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 3,
+      "ambiguity": null
+    },
+    {
+      "id": "same-price-different-merchants",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "same-price-different-accounts",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "different-currencies",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "different-amounts",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "purchase-two-days-later",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "transfer-legs",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "income-records",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "invoice-linked-records",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "personal-or-vendor-bill-linked",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "confirmed-subscription-linked",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "recurring-linked-records",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "merchant-not-permitted-or-missing",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "deleted-record",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "same-record-returned-twice",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "independent-same-day-groceries",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": true,
+      "result": "false_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": "Legitimate independent purchases are indistinguishable from a duplicate with these stored fields."
+    },
+    {
+      "id": "independent-coffees-without-history",
+      "kind": "possible_duplicate",
+      "expectedFinding": false,
+      "predictedFinding": true,
+      "result": "false_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": "Date-only data has no purchase time or bank reference to distinguish two visits."
+    },
+    {
+      "id": "real-double-record-in-established-habit",
+      "kind": "possible_duplicate",
+      "expectedFinding": true,
+      "predictedFinding": false,
+      "result": "false_negative",
+      "matchingFindings": 0,
+      "otherFindings": 3,
+      "ambiguity": "Habit suppression deliberately abstains; a real duplicate can also occur in regular spending."
+    },
+    {
+      "id": "large-food-purchase",
+      "kind": "unusual_spending",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "one-minor-unit-above-threshold",
+      "kind": "unusual_spending",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "usd-large-purchase",
+      "kind": "unusual_spending",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "wide-baseline-clear-outlier",
+      "kind": "unusual_spending",
+      "expectedFinding": true,
+      "predictedFinding": true,
+      "result": "true_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "below-usual-spending",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "normal-spending",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "exact-relative-threshold",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "only-seven-prior-records",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "one-day-bulk-import-is-not-history",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "uncategorized-mixed-spending",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "separate-account-baseline",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "different-currency-baseline",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "user-marked-one-off-laptop",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "known-recurring-payment",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "known-bill-or-vendor-payment",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "known-subscription-payment",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "high-variance-category-within-spread",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "zero-amount-history",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "same-day-data-does-not-train-itself",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "future-data-does-not-train-past",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "one-offs-do-not-train-baseline",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "maximum-numeric-threshold-does-not-overflow",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": false,
+      "result": "true_negative",
+      "matchingFindings": 0,
+      "otherFindings": 0,
+      "ambiguity": null
+    },
+    {
+      "id": "intentional-unmarked-gift",
+      "kind": "unusual_spending",
+      "expectedFinding": false,
+      "predictedFinding": true,
+      "result": "false_positive",
+      "matchingFindings": 1,
+      "otherFindings": 0,
+      "ambiguity": "A legitimate planned purchase without a one-off marker still looks statistically unusual."
+    }
+  ],
+  "benchmark": {
+    "records": 5000,
+    "runs": 5,
+    "medianMilliseconds": 91.88,
+    "maxMilliseconds": 129.73,
+    "note": "Informational local CPU timing; no platform-independent speed guarantee."
+  }
+}

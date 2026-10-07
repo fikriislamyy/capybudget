@@ -36,6 +36,7 @@ export function projectCashflow(input: {
       qualityFlags.push('unassigned_forecast_account');
       continue;
     }
+    if(!event.accountId&&event.kind!=='transfer')qualityFlags.push('unassigned_forecast_account');
     const day = eventsByDate.get(event.date) ?? [];
     day.push(event);
     eventsByDate.set(event.date, day);
@@ -46,6 +47,7 @@ export function projectCashflow(input: {
   const conservativeBalances = new Map(input.accounts.map((account) => [account.id, toUnits(account.balance, true)]));
   const rows: ForecastDay[] = [];
   const points: ForecastDay[] = [];
+  let unassignedBaseCarry=0n,unassignedConservativeCarry=0n;
   let safeUnits: bigint | null = null;
   let aggregateMinimum: bigint | null = null;
   let aggregateThresholdDate: string | null = null;
@@ -99,9 +101,12 @@ export function projectCashflow(input: {
       conservativeBalances.set(account.id, conservativeClosing);
     }
 
-    const unassigned = dailyEvents.filter((event) => !event.accountId && event.kind !== 'transfer').reduce((sum, event) => sum + toUnits(event.amount, true), 0n);
-    const aggregateOutflowsNet = aggregateOutflows + (unassigned < 0n ? -unassigned : 0n);
-    const aggregateInNet = aggregateInflows + (unassigned > 0n ? unassigned : 0n);
+    const unassignedEvents=dailyEvents.filter(event=>!event.accountId&&event.kind!=='transfer');
+    const unassignedOutflows=unassignedEvents.filter(event=>toUnits(event.amount,true)<0n).reduce((sum,event)=>sum-toUnits(event.amount,true),0n);
+    const unassignedInflows=unassignedEvents.filter(event=>toUnits(event.amount,true)>0n).reduce((sum,event)=>sum+toUnits(event.amount,true),0n);
+    aggregateOpening+=unassignedBaseCarry;aggregateConservativeOpening+=unassignedConservativeCarry;
+    const aggregateOutflowsNet=aggregateOutflows+unassignedOutflows;
+    const aggregateInNet=aggregateInflows+unassignedInflows;
     const aggregateAfterOutflows = aggregateOpening - aggregateOutflowsNet;
     const aggregateMin = aggregateAfterOutflows < aggregateAfterOutflows + aggregateInNet ? aggregateAfterOutflows : aggregateAfterOutflows + aggregateInNet;
     const configuredThreshold = input.accounts.reduce((sum, account) => sum + toUnits(account.lowBalanceThreshold ?? '0'), 0n);
@@ -118,6 +123,7 @@ export function projectCashflow(input: {
       { date: dateText, accountId: null, openingBalance: fromUnits(aggregateOpening), inflows: fromUnits(aggregateInNet), outflows: fromUnits(aggregateOutflowsNet), closingBalance: fromUnits(aggregateAfterOutflows + aggregateInNet), minimumBalance: fromUnits(aggregateMin), protectedAmount: fromUnits(aggregateProtected), headroom: fromUnits(aggregateMin - aggregateProtected), scenario: 'base' },
       { date: dateText, accountId: null, openingBalance: fromUnits(aggregateConservativeOpening), inflows: fromUnits(aggregateConservativeInNet), outflows: fromUnits(aggregateOutflowsNet), closingBalance: fromUnits(aggregateConservativeAfterOutflows + aggregateConservativeInNet), minimumBalance: fromUnits(conservativeMin), protectedAmount: fromUnits(aggregateProtected), headroom: fromUnits(aggregateHeadroom), scenario: 'conservative' }
     ];
+    unassignedBaseCarry+=unassignedInflows-unassignedOutflows;unassignedConservativeCarry+=unassignedConservativeInflows-unassignedOutflows;
     rows.push(...aggregateRows);
     points.push(...aggregateRows);
   }

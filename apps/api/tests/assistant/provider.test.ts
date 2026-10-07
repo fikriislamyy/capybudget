@@ -3,7 +3,14 @@ import { assistantProviderAvailable, disabledAssistantProvider } from '../../src
 
 describe('external assistant provider fallback', () => {
   test('keeps model features unavailable and returns no result without a configured provider', async () => {
-    expect(assistantProviderAvailable()).toBe(false);
+    const previous = process.env.ASSISTANT_EXTERNAL_DATA_TERMS_ACKNOWLEDGED;
+    try {
+      process.env.ASSISTANT_EXTERNAL_DATA_TERMS_ACKNOWLEDGED = 'false';
+      expect(assistantProviderAvailable()).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.ASSISTANT_EXTERNAL_DATA_TERMS_ACKNOWLEDGED;
+      else process.env.ASSISTANT_EXTERNAL_DATA_TERMS_ACKNOWLEDGED = previous;
+    }
     expect(await disabledAssistantProvider.categorize({
       transactionType: 'expense',
       merchant: '<script>ignore policy</script>',

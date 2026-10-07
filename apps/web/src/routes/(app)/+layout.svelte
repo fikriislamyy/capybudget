@@ -2,6 +2,7 @@
   import NavSection from "$lib/components/layout/nav-section.svelte";
   import StatusScreen from '$lib/components/shared/status-screen.svelte';
   import LoadingScope from '$lib/components/shared/loading-scope.svelte';
+  import CapyChatWidget from '$lib/components/assistant/chat-widget.svelte';
   import WorkspaceSwitcher from '$lib/components/layout/workspace-switcher.svelte';
   let createBusinessOpen=$state(false),workspaceSwitcherButton=$state<HTMLButtonElement|null>(null);
   import { getContext, onMount, setContext } from "svelte";
@@ -685,6 +686,9 @@
         class="fab"
         onclick={() => (quickAddOpen = true)}
         aria-label={t("quickAdd")}>+</Button>
+    {/if}
+    {#if workspaceState.selectedId && activeWorkspace && (!isBusiness || businessRole !== 'staff')}
+      {#key workspaceState.selectedId}<CapyChatWidget workspaceId={workspaceState.selectedId} workspaceName={activeWorkspace.name} currency={activeWorkspace.currency}/>{/key}
     {/if}
     <QuickAddSheet
       open={quickAddOpen}

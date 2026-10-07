@@ -65,7 +65,7 @@ export type EmailMessage = {securityOwnerId?:string;securityGeneration?:number} 
       expiresAt: number;
     }
   | {
-      kind: 'assistant-alert';
+      kind: 'assistant-alert' | 'assistant-summary';
       to: string;
       workspaceId: string;
       userId: string;

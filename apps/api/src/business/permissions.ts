@@ -29,7 +29,8 @@ export async function authorizeWorkspace(tx: TransactionSql, workspaceId: string
     const documentRead = request.method === 'POST' && (/^\/invoices\/[^/]+\/pdf$/.test(path)
       || /^\/reports\/runs(?:\/[^/]+\/exports)?$/.test(path));
     const ownNotification = /^\/(?:notifications|notification-preferences|notification-rules)(?:\/|$)/.test(path);
-    if (!read && !documentRead && !ownNotification) deny(403, 'PERMISSION_DENIED', 'This workspace is read-only for your role.');
+    const ownAssistant=/^\/assistant\/(?:settings|data|forecast\/refresh|v2\/(?:chat|voice|entry|scenarios|payment-plan|summary-schedule|findings\/[0-9a-f-]{36}))$/.test(path);
+    if (!read && !documentRead && !ownNotification && !ownAssistant) deny(403, 'PERMISSION_DENIED', 'This workspace is read-only for your role.');
     return role;
   }
   // Staff may prepare their own drafts. No issued documents, wallet data or reports.

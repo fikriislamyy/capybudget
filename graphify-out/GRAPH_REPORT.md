@@ -1,17 +1,17 @@
 # Graph Report - capybudget  (2026-10-06)
 
 ## Corpus Check
-- 649 files · ~614,589 words
+- 694 files · ~638,260 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 73 file(s) not represented in the graph (top: .csv 53, .Identifier 7, (none) 6)
 
 ## Summary
-- 4394 nodes · 8546 edges · 262 communities (202 shown, 60 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 105 edges (avg confidence: 0.86)
+- 4623 nodes · 9351 edges · 260 communities (211 shown, 49 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 114 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d5cd9a06`
+- Built from commit: `859243cf`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -21,21 +21,21 @@
 - schema.ts
 - scripts/core.py
 - validate_data.py
-- api/package.json
+- ref_node_crypto
 - doku.ts
 - gray
 - TailwindConfigGenerator
-- business/worker.ts
-- (app)/+layout.svelte
+- privacy.ts
+- svelte
 - scripts
 - slide_search_core.py
 - Tailwind CSS Utility Reference
 - CapyBudget: Design System & Visual Metaphor
-- workspaceToday
-- reports/routes.ts
 - q
+- reports/routes.ts
+- accounting.ts
 - Brand Guidelines v1.0
-- app.ts
+- client
 - Design
 - Canvas Design System
 - assistant/routes.ts
@@ -44,7 +44,7 @@
 - Tailwind CSS Responsive Design
 - 6. Step-by-step implementation
 - Typography Specifications
-- business-checks.ts
+- scheduler.ts
 - web/package.json
 - Logo Usage Rules
 - Component Specifications
@@ -52,6 +52,7 @@
 - shadcn/ui Accessibility Patterns
 - TestTailwindConfigGenerator
 - business/routes.ts
+- test_relevance_evaluator.py
 - payments.ts
 - Asset Approval Checklist
 - Logo AI Prompt Engineering
@@ -60,26 +61,26 @@
 - CIP Deliverable Guide
 - States and Variants
 - UI Styling Skill
-- re
-- button/index.ts
+- detection.ts
+- feedback.ts
 - Workflow
 - []
 - Design System
 - Tailwind CSS Customization
-- exports.ts
+- ref_bun_test
 - spacing
 - TestGeneratedConfigIsValidJs
 - CapyBudget: Recommended Features
-- db/index.ts
-- assistant/+page.svelte
+- fetch-background.py
+- @lucide/svelte/icons/check
 - AWS EC2 free-tier VPS setup for CapyBudget
 - Routing by Task Type
 - shadcn/ui Theming & Customization
-- join/+page.svelte
+- assistant/v2/routes.ts
 - Asset Organization Guide
 - Primary Color Meanings
 - Core Logo Types
-- reminder-scheduler.ts
+- providers/index.ts
 - color
 - DesignSystemGenerator
 - Core tracking V2
@@ -90,27 +91,27 @@
 - devDependencies
 - components.json
 - dependencies
-- TestNativeDesktopStackFreshness
+- test_style_taxonomy.py
 - Design Principles
 - Design Principles
-- fetch-background.py
+- cip/core.py
 - fontSize
-- TestShadcnInstaller
+- ShadcnInstaller
 - CapyBudget User Guide
 - extract-colors.cjs
 - CIP Design Reference
 - Icon Design Reference
 - Copywriting Formulas
 - Copywriting Formulas
-- tax-routes.ts
-- tracking/routes.ts
+- assistant/+page.svelte
 - design_system.py
+- v2/worker.ts
 - CatalogRefreshTest
-- svelte
+- loading-scope.svelte
 - Banner Design - Multi-Format Creative Banner System
 - Messaging Framework
 - Brand Voice Framework
-- field/index.ts
+- button/index.ts
 - validate-asset.cjs
 - Layout Patterns
 - Tailwind Integration
@@ -121,7 +122,7 @@
 - CapyBudget: Product Requirements Document (PRD)
 - update.md
 - Logo Design Reference
-- icon/generate.py
+- toUnits
 - Token Architecture
 - design-tokens-starter.json
 - select/index.ts
@@ -133,14 +134,15 @@
 - embed-tokens.cjs
 - validate-tokens.cjs
 - card
-- ShadcnInstaller
-- TestSearchDomains
+- tracking/routes.ts
+- reminder-scheduler.ts
+- TestTokenizer
 - Core Visual Elements
 - inject-brand-context.cjs
 - CIP Design Style Guide
 - utils.ts
 - Quick Reference
-- provider.ts
+- TestSearchDomains
 - sync-brand-to-tokens.cjs
 - Brand
 - Slide Strategies
@@ -150,13 +152,15 @@
 - duration
 - Slide Strategies
 - ux/routes.ts
-- isoDate
+- Money
 - tax/+page.svelte
 - compilerOptions
 - cip/generate.py
+- business/worker.ts
 - 6. Functional Requirements
-- business/money.ts
+- fromUnits
 - generate-slide.py
+- formatDate
 - @sveltejs/kit
 - 18. Protect your account and data
 - input
@@ -170,9 +174,9 @@
 - HTML Slide Template
 - personal-finance/routes.ts
 - HTML Slide Template
-- logo/search.py
+- api/package.json
 - Slides
-- cip/core.py
+- re
 - Security and privacy MVP — issue 13
 - debts/+page.svelte
 - Pre-Delivery Checklist
@@ -195,6 +199,7 @@
 - xl
 - none
 - Tips for Better Results
+- TestNativeDesktopStackFreshness
 - team.ts
 - 14. Create and manage invoices
 - 20. A simple daily and weekly routine
@@ -209,7 +214,6 @@
 - primary-foreground
 - ring
 - secondary-foreground
-- v2/worker.ts
 - dev.ts
 - invitation.ts
 - 12. Manage bills and due dates
@@ -223,40 +227,46 @@
 - slides-create.md
 - create.md
 - refresh.spec.ts
-- @lucide/svelte/icons/check
+- assistantV2Constraints
+- audit-display.ts
 - pathlib
 - page-guides.ts
 - fx.ts
-- privacy.ts
-- Start
-- @playwright/test
+- logo/search.py
+- Assistant V2 — local verification (step 3)
+- AI Assistant V2 — issues #9 and #10 requirement audit
+- Capy Assistant V2
+- db/index.ts
 - Pakasir invoice payments
+- business/money.ts
+- icon/generate.py
 - Included in this change
-- dialog-footer.svelte
+- vendor-bills-screen.svelte
+- TestBm25CoreBehavior
+- @playwright/test
 - 13. Keep business finances separate
-- deletion-receipt/+page.svelte
 - CapyBudget email design
 - deploy.sh
 - onboarding.ts
-- test_relevance_evaluator.py
-- client
-- TestTokenizer
-- csv
-- TestBm25CoreBehavior
+- operations/backup.ts
+- Assistant detection evaluation
+- dialog-footer.svelte
 
 ## God Nodes (most connected - your core abstractions)
-1. `client` - 74 edges
+1. `client` - 76 edges
 2. `TailwindConfigGenerator` - 58 edges
-3. `q()` - 45 edges
-4. `reject()` - 40 edges
-5. `workspaceToday()` - 39 edges
-6. `TestTailwindConfigGenerator` - 35 edges
-7. `DesignSystemGenerator` - 35 edges
-8. `ShadcnInstaller` - 34 edges
-9. `[]` - 33 edges
-10. `businessRoutes` - 31 edges
+3. `assistantV2Routes` - 45 edges
+4. `q()` - 45 edges
+5. `workspaceToday()` - 44 edges
+6. `toUnits()` - 43 edges
+7. `reject()` - 40 edges
+8. `fromUnits()` - 38 edges
+9. `TestTailwindConfigGenerator` - 35 edges
+10. `DesignSystemGenerator` - 35 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `Layout` --references--> `failed()`  [INFERRED]
+  README.md → apps/api/src/assistant/v2/routes.ts
 - `Off-host S3 backup destination` --references--> `ensureBackupBucket()`  [INFERRED]
   docs/deployment-jenkins.md → apps/api/src/privacy/tombstones.ts
 - `Loading overlay` --references--> `trackLoading()`  [INFERRED]
@@ -265,25 +275,23 @@
   docs/deployment-jenkins.md → apps/web/src/hooks.server.ts
 - `2. Current UI/UX review and recommendations` --references--> `applyThemeChoice()`  [INFERRED]
   issue.md → apps/web/src/lib/theme.ts
-- `cancel()` --calls--> `copy()`  [INFERRED]
-  apps/web/src/lib/components/business/invitation-notice.svelte → apps/web/src/routes/(app)/business/aging/+page.svelte
 
 ## Import Cycles
 - None detected.
 
-## Communities (262 total, 60 thin omitted)
+## Communities (260 total, 49 thin omitted)
 
 ### Community 0 - "dependencies"
 Cohesion: 0.09
 Nodes (23): dependencies, archiver, @aws-sdk/client-s3, @aws-sdk/lib-storage, better-auth, bullmq, csv-parse, decimal.js (+15 more)
 
 ### Community 1 - "i18n/auth.ts"
-Cohesion: 0.07
-Nodes (12): color, fill, message, status, fill, status, messages, Locale (+4 more)
+Cohesion: 0.06
+Nodes (18): selected, unavailable, color, fill, message, status, fill, status (+10 more)
 
 ### Community 2 - "schema.ts"
 Cohesion: 0.02
-Nodes (116): accountDeletionRequests, accounts, aiInvocations, assistantAccountSettings, assistantActionProposals, assistantRefreshState, assistantSettings, assistantSuggestions (+108 more)
+Nodes (112): accountDeletionRequests, accounts, aiInvocations, assistantAccountSettings, assistantActionProposals, assistantFeedback, assistantRefreshState, assistantSettings (+104 more)
 
 ### Community 3 - "scripts/core.py"
 Cohesion: 0.06
@@ -293,9 +301,9 @@ Nodes (31): BM25, _contains_phrase(), detect_domain(), _domain_keywords(), _exac
 Cohesion: 0.07
 Nodes (43): read_rows(), TestAccessibilityGuidance, TestChartsTypographyAndIcons, TestCurrentReactGuidance, TestSemanticColors, _catalog_date(), _check_app_interface_contract(), _check_catalog_contract() (+35 more)
 
-### Community 5 - "api/package.json"
-Cohesion: 0.07
-Nodes (25): devDependencies, drizzle-kit, @types/archiver, @types/bun, @types/nodemailer, @types/web-push, typescript, exports (+17 more)
+### Community 5 - "ref_node_crypto"
+Cohesion: 0.18
+Nodes (12): child, redis, url, child, destination, redis, startAccountingScheduler(), context() (+4 more)
 
 ### Community 6 - "doku.ts"
 Cohesion: 0.24
@@ -305,17 +313,17 @@ Nodes (15): amountString(), checkoutUrl(), DokuCheckout, DokuClient, DokuCredent
 Cohesion: 0.05
 Nodes (53): $type, $value, $type, $value, $type, $value, $type, $value (+45 more)
 
-### Community 9 - "business/worker.ts"
-Cohesion: 0.10
-Nodes (36): connection, queue, links, dispatchInvitationEmails(), sendInvitationEmail(), invoicePaymentLink(), dispatchInvoiceDeliveries(), loadInvoiceDelivery() (+28 more)
+### Community 9 - "privacy.ts"
+Cohesion: 0.11
+Nodes (12): PRIVACY_CONTEXT, PrivacyState, readPrivacyMode(), writePrivacyMode(), applyThemeChoice(), cancelThemeTransition(), normalizeThemeChoice(), readThemeChoice() (+4 more)
 
-### Community 10 - "(app)/+layout.svelte"
+### Community 10 - "svelte"
 Cohesion: 0.06
 Nodes (12): NAV_GROUPS, NavEntry, NavGroup, dismissed, isId, slow, visible, installLoadingTracker() (+4 more)
 
 ### Community 11 - "scripts"
-Cohesion: 0.07
-Nodes (29): scripts, assistant:query-plans, assistant:redis-persistence, backtest:assistant, benchmark:assistant, check, db:cleanup-auth, db:fresh (+21 more)
+Cohesion: 0.06
+Nodes (34): scripts, assistant:query-plans, assistant:redis-persistence, backtest:assistant, benchmark:assistant, check, db:cleanup-auth, db:fresh (+26 more)
 
 ### Community 12 - "slide_search_core.py"
 Cohesion: 0.08
@@ -329,25 +337,25 @@ Nodes (43): Arbitrary Values, Aspect Ratio, Background Colors, Border Color, Bor
 Cohesion: 0.05
 Nodes (42): 10. Two Modes, One Identity, 11. Component Guidelines, 12. Design Tokens (Starter), 13. Accessibility Checklist, 14. Do and Don't, 15. Asset Checklist (for the illustrator / designer), 16. Open Questions, 1. The Core Metaphor: "The Onsen" (+34 more)
 
-### Community 15 - "workspaceToday"
-Cohesion: 0.21
-Nodes (30): businessDirectoryRoutes, query(), saveCatalog(), addMoney(), compareMoney(), validPositiveAmount(), payableRoutes, saveVendorBill() (+22 more)
+### Community 15 - "q"
+Cohesion: 0.25
+Nodes (33): accountingDate(), activateAccounting(), documents(), businessAccountingRoutes, businessAnalyticsRoutes, Money, period(), businessDirectoryRoutes (+25 more)
 
 ### Community 16 - "reports/routes.ts"
-Cohesion: 0.05
-Nodes (71): Doc, escape(), Line, renderInvoicePdf(), appLink(), codeCard(), detailCard(), emailLayout (+63 more)
+Cohesion: 0.12
+Nodes (36): dateRange(), iso(), presets, ReportPreset, resolveReportPeriod(), shift(), enqueueReportExport(), enqueueReportRun() (+28 more)
 
-### Community 17 - "q"
-Cohesion: 0.25
-Nodes (28): accountingDate(), accountingHash(), accountingStatement(), activateAccounting(), classes, classifyTransaction(), document(), documents() (+20 more)
+### Community 17 - "accounting.ts"
+Cohesion: 0.26
+Nodes (20): accountingHash(), accountingStatement(), classes, classifyTransaction(), document(), drainAccounting(), fixed(), Kind (+12 more)
 
 ### Community 18 - "Brand Guidelines v1.0"
 Cohesion: 0.05
 Nodes (37): 1. Color Palette, 2. Typography, 3. Logo Usage, 4. Voice & Tone, 5. Imagery Guidelines, 6. Design Components, Accessibility, AI Image Generation (+29 more)
 
-### Community 19 - "app.ts"
-Cohesion: 0.12
-Nodes (34): database, redis, web, app, clientIpForRequest(), trustedProxyHops, trustedProxyIps, Bucket (+26 more)
+### Community 19 - "client"
+Cohesion: 0.16
+Nodes (30): app, clientIpForRequest(), trustedProxyHops, trustedProxyIps, auth, Bucket, buildRateLimitBuckets(), consumeAuthRateLimit() (+22 more)
 
 ### Community 20 - "Design"
 Cohesion: 0.06
@@ -358,8 +366,8 @@ Cohesion: 0.06
 Nodes (35): 1. Visual Communication First, 2. Minimal Text Integration, 3. Expert Craftsmanship, 4. Systematic Patterns, Analog Meditation, Approach, Canvas Boundaries, Canvas Design System (+27 more)
 
 ### Community 22 - "assistant/routes.ts"
-Cohesion: 0.06
-Nodes (71): accounts, events, samples, hashAssistantActionPayload(), isValidActionPayloadHash(), BacktestObservation, PERCENT_DENOMINATOR_FLOOR, summarizeBacktest() (+63 more)
+Cohesion: 0.12
+Nodes (29): hashAssistantActionPayload(), isValidActionPayloadHash(), CategoryRuleCandidate, chooseCategoryRule(), normalizeMerchant(), ASSISTANT_QUEUE, enqueueAssistantForecastRun(), getQueue() (+21 more)
 
 ### Community 23 - "scripts"
 Cohesion: 0.05
@@ -381,9 +389,9 @@ Nodes (28): External acceptance still to record, Implementation acceptance, Issu
 Cohesion: 0.06
 Nodes (30): Accessibility, Base System, Best Practices, Clean & Modern, Common Font Pairings, Contrast Requirements, CSS Implementation, Editorial (+22 more)
 
-### Community 28 - "business-checks.ts"
-Cohesion: 0.50
-Nodes (3): child, destination, redis
+### Community 28 - "scheduler.ts"
+Cohesion: 0.28
+Nodes (14): exceedsUnusualThreshold(), medianUnits(), unusualThreshold(), evaluateUnusualCandidate(), evaluateWorkspaceNotifications(), notify(), q(), resolve() (+6 more)
 
 ### Community 29 - "web/package.json"
 Cohesion: 0.07
@@ -406,8 +414,12 @@ Cohesion: 0.07
 Nodes (28): Accordion, Alert, ARIA Labels, Checkbox and Radio, Color Contrast, Command Palette Navigation, Component-Specific Patterns, Dialog/Modal Navigation (+20 more)
 
 ### Community 35 - "business/routes.ts"
-Cohesion: 0.29
-Nodes (22): addressReady(), audit(), bounded(), businessRoutes, cleanAddress(), detail(), ensurePdf(), fail() (+14 more)
+Cohesion: 0.28
+Nodes (23): addressReady(), audit(), bounded(), businessRoutes, cleanAddress(), detail(), ensurePdf(), fail() (+15 more)
+
+### Community 36 - "test_relevance_evaluator.py"
+Cohesion: 0.11
+Nodes (3): TestFixtureValidation, TestMetricMath, TestThresholdGate
 
 ### Community 37 - "payments.ts"
 Cohesion: 0.16
@@ -422,8 +434,8 @@ Cohesion: 0.08
 Nodes (25): Common Pitfalls, Core Prompt Structure, Detailed Brief, Eco/Sustainable, Effective Keywords by Style, Fashion Brand, Healthcare, Industry-Specific Prompts (+17 more)
 
 ### Community 40 - "test_design_system_mode.py"
-Cohesion: 0.07
-Nodes (14): _contrast_ratio(), _derive_dark_palette(), _filter_anti_patterns_for_mode(), _palette_is_dark(), _query_wants_dark(), _relative_luminance(), _resolve_color_mode(), _select_palette_for_mode() (+6 more)
+Cohesion: 0.05
+Nodes (15): _contrast_ratio(), _derive_dark_palette(), _filter_anti_patterns_for_mode(), _palette_is_dark(), _query_wants_dark(), _relative_luminance(), _resolve_color_mode(), _resolve_dial() (+7 more)
 
 ### Community 41 - "Color Palette Management"
 Cohesion: 0.08
@@ -441,9 +453,13 @@ Nodes (24): Accessibility, Accessibility Requirements, ARIA States, Color Contra
 Cohesion: 0.08
 Nodes (24): Accessibility Patterns, Alternative: Tailwind-Only Setup, Best Practices, Common Patterns, Component Layer: shadcn/ui, Component Library Guide, Component + Styling Setup, Core Stack (+16 more)
 
-### Community 45 - "re"
-Cohesion: 0.12
-Nodes (6): BM25, detect_domain(), _load_csv(), search(), search_all(), _search_csv()
+### Community 45 - "detection.ts"
+Cohesion: 0.20
+Nodes (17): benchmarkDetection(), evaluateDetection(), baseline(), DetectionCase, detectionCases, expense(), habit(), pair() (+9 more)
+
+### Community 47 - "feedback.ts"
+Cohesion: 0.22
+Nodes (16): eligibleNudgeTopics(), FeedbackAction, feedbackAllows(), FeedbackRow, feedbackRows(), filterNudgeMetrics(), NudgeTopic, nudgeTopics() (+8 more)
 
 ### Community 48 - "Workflow"
 Cohesion: 0.08
@@ -461,9 +477,9 @@ Nodes (22): Best Practices, Chart.js Integration, Command, Component Spec Patter
 Cohesion: 0.09
 Nodes (22): @apply Directive, Best Practices, Color Customization, Complete Tailwind Config, Configuration Examples, Content Configuration, Custom Color Palette, Custom Font Sizes (+14 more)
 
-### Community 52 - "exports.ts"
-Cohesion: 0.26
-Nodes (9): runDeletion(), archiveContext(), runPrivacyExport(), exportRecord(), secretColumns, workspaceTables, privacySweep(), deleteAttachment() (+1 more)
+### Community 52 - "ref_bun_test"
+Cohesion: 0.18
+Nodes (14): eraseSubject(), runDeletion(), archiveContext(), privacyArchive(), runPrivacyExport(), exportRecord(), secretColumns, workspaceTables (+6 more)
 
 ### Community 53 - "spacing"
 Cohesion: 0.09
@@ -473,13 +489,9 @@ Nodes (22): $type, $value, $type, $value, $type, $value, $type, $value (+14 more
 Cohesion: 0.09
 Nodes (21): 10. Monetization, 11. Suggested Build Order, 1. Core Tracking (shared by personal and business), 2. Personal Finance, 3. Business Finance, 4.1 Cashflow Management, 4.2 Insights and Detection, 4.3 Conversational Features (+13 more)
 
-### Community 56 - "db/index.ts"
-Cohesion: 0.11
-Nodes (21): failure(), mapScopeError(), q(), reject(), withAssistantScope(), auth, authorizeWorkspace(), BusinessRole (+13 more)
-
-### Community 57 - "assistant/+page.svelte"
-Cohesion: 0.15
-Nodes (13): formatExactAmount(), parseLocalizedAmount(), for(), money(), #snippet(), if(), load(), load() (+5 more)
+### Community 56 - "fetch-background.py"
+Cohesion: 0.07
+Nodes (12): generate_css_for_background(), get_background_image(), get_curated_images(), get_overlay_css(), get_pexels_search_url(), load_backgrounds_config(), load_brand_colors(), main() (+4 more)
 
 ### Community 58 - "AWS EC2 free-tier VPS setup for CapyBudget"
 Cohesion: 0.18
@@ -493,9 +505,9 @@ Nodes (19): Banner Design Tasks, Brand Identity Tasks, Component Creation, Corpo
 Cohesion: 0.10
 Nodes (19): Base Color Presets, Best Practices, Color Customization, Color Format, Component Customization, CSS Variable System, Customize Styles, Customize Variants (+11 more)
 
-### Community 61 - "join/+page.svelte"
-Cohesion: 0.43
-Nodes (5): accept(), call(), leave(), open(), signOut()
+### Community 61 - "assistant/v2/routes.ts"
+Cohesion: 0.20
+Nodes (29): ANALYTICS_VERSION, entrySchema, readToolSchema, validateToolSelection(), allocationRows(), analyticsData(), goalsData(), languageContext() (+21 more)
 
 ### Community 62 - "Asset Organization Guide"
 Cohesion: 0.11
@@ -509,17 +521,17 @@ Nodes (18): Accessibility Considerations, Analogous, Black, Blue, Color Combinat
 Cohesion: 0.11
 Nodes (18): 1. Wordmark (Logotype), 2. Lettermark (Monogram), 3. Pictorial Mark (Brand Mark), 4. Abstract Mark, 5. Mascot, 6. Emblem, 7. Combination Mark, Aesthetic Styles (+10 more)
 
-### Community 65 - "reminder-scheduler.ts"
-Cohesion: 0.14
-Nodes (13): decryptPushAuth(), encryptPushAuth(), key(), PushScope, scopedContext(), AssistantPushJob, deliverAssistantPushJob(), deliverPushJob() (+5 more)
+### Community 65 - "providers/index.ts"
+Cohesion: 0.07
+Nodes (37): json(), report, AssistantProvider, disabledAssistantProvider, ProviderCategoryInput, ProviderCategoryResult, ProviderSuggestionInput, ProviderSuggestionResult (+29 more)
 
 ### Community 66 - "color"
 Cohesion: 0.11
 Nodes (19): $type, $value, background, foreground, muted-foreground, primary, primary-hover, secondary (+11 more)
 
 ### Community 67 - "DesignSystemGenerator"
-Cohesion: 0.05
-Nodes (14): DesignSystemGenerator, _resolve_dial(), apply_decision_rules(), _object_without_duplicates(), parse_decision_rules(), _validate_action(), TestReasoningMatch, read_rows() (+6 more)
+Cohesion: 0.06
+Nodes (13): DesignSystemGenerator, apply_decision_rules(), _object_without_duplicates(), parse_decision_rules(), _validate_action(), TestReasoningMatch, read_rows(), split_values() (+5 more)
 
 ### Community 68 - "Core tracking V2"
 Cohesion: 0.20
@@ -557,13 +569,17 @@ Nodes (15): 22 Art Direction Styles, Banner Sizes & Art Direction Styles Referen
 Cohesion: 0.12
 Nodes (15): 22 Art Direction Styles, Banner Sizes & Art Direction Styles Reference, Complete Banner Sizes, CTA Rules, Design Principles, Pinterest Research Queries, Print, Print Specs (+7 more)
 
-### Community 80 - "fetch-background.py"
-Cohesion: 0.16
-Nodes (9): generate_css_for_background(), get_background_image(), get_curated_images(), get_overlay_css(), get_pexels_search_url(), load_backgrounds_config(), load_brand_colors(), main() (+1 more)
+### Community 80 - "cip/core.py"
+Cohesion: 0.11
+Nodes (7): BM25, detect_domain(), get_cip_brief(), _load_csv(), search(), search_all(), _search_csv()
 
 ### Community 81 - "fontSize"
 Cohesion: 0.12
 Nodes (16): $type, $value, $type, $value, $type, $value, $type, $value (+8 more)
+
+### Community 82 - "ShadcnInstaller"
+Cohesion: 0.04
+Nodes (3): main(), ShadcnInstaller, TestShadcnInstaller
 
 ### Community 83 - "CapyBudget User Guide"
 Cohesion: 0.12
@@ -589,21 +605,21 @@ Nodes (14): AIDA (Attention-Interest-Desire-Action), Before-After-Bridge, Contra
 Cohesion: 0.13
 Nodes (14): AIDA (Attention-Interest-Desire-Action), Before-After-Bridge, Contrast Patterns, Copywriting Formulas, Core Formulas, Cost of Inaction, FAB (Features-Advantages-Benefits), Formula-to-Slide Mapping (+6 more)
 
-### Community 89 - "tax-routes.ts"
-Cohesion: 0.80
-Nodes (5): audit(), businessTaxRoutes, permission(), q(), reject()
+### Community 89 - "assistant/+page.svelte"
+Cohesion: 0.10
+Nodes (20): L(), #snippet(), submit(), formatDate(), label(), money(), #snippet(), formatExactAmount() (+12 more)
 
-### Community 90 - "tracking/routes.ts"
-Cohesion: 0.28
-Nodes (22): nextOccurrenceDate(), Actor, actorFor(), audit(), decimal(), dirtyUnusualBaselines(), fail(), Input (+14 more)
-
-### Community 91 - "design_system.py"
+### Community 90 - "design_system.py"
 Cohesion: 0.07
 Nodes (15): ansi_ljust(), _detect_page_type(), format_ascii_box(), format_markdown(), format_master_md(), format_page_override_md(), generate_design_system(), _generate_intelligent_overrides() (+7 more)
 
-### Community 93 - "svelte"
+### Community 91 - "v2/worker.ts"
+Cohesion: 0.26
+Nodes (14): getQueue(), scheduleRecurringWorkspace(), scheduleTrackingTask(), TRACKING_QUEUE, processRecurringWorkspace(), receiptFields(), cleanCaptureFiles(), dispatchCaptureJobs() (+6 more)
+
+### Community 93 - "loading-scope.svelte"
 Cohesion: 0.12
-Nodes (13): selected, unavailable, load(), send(), displayAmount, sign, messages, formatDate() (+5 more)
+Nodes (11): load(), send(), displayAmount, sign, messages, formatDate(), show(), load() (+3 more)
 
 ### Community 94 - "Banner Design - Multi-Format Creative Banner System"
 Cohesion: 0.14
@@ -617,9 +633,9 @@ Nodes (13): Core Statements, Elevator Pitches, Framework Structure, Message Arch
 Cohesion: 0.14
 Nodes (13): Brand Voice Framework, Character Spectrum, Emotion Spectrum, Language Spectrum, Step 1: Define Personality Traits, Step 2: Create Voice Chart, Step 3: Context Adaptation, Tone Spectrum (+5 more)
 
-### Community 97 - "field/index.ts"
-Cohesion: 0.08
-Nodes (7): authClient, cancel(), callbackPath(), mode(), notificationUrl(), paymentStatus(), verify()
+### Community 97 - "button/index.ts"
+Cohesion: 0.07
+Nodes (12): authClient, cancel(), callbackPath(), mode(), notificationUrl(), paymentStatus(), verify(), accept() (+4 more)
 
 ### Community 98 - "validate-asset.cjs"
 Cohesion: 0.25
@@ -661,9 +677,9 @@ Nodes (12): Color Presets, Examples, Files Modified, Important, Overview, Skills
 Cohesion: 0.15
 Nodes (12): Available Styles, Color Psychology, Commands, Design Brief (Start Here), Detailed References, Generate Logo, Industry Defaults, Logo Design Reference (+4 more)
 
-### Community 108 - "icon/generate.py"
+### Community 108 - "toUnits"
 Cohesion: 0.10
-Nodes (13): apply_color(), apply_viewbox_size(), extract_svgs(), generate_batch(), generate_icon(), generate_sizes(), load_env(), main() (+5 more)
+Nodes (30): accounts, events, samples, BacktestObservation, PERCENT_DENOMINATOR_FLOOR, summarizeBacktest(), hasUnresolvedSourceOverlap(), projectCashflow() (+22 more)
 
 ### Community 109 - "Token Architecture"
 Cohesion: 0.15
@@ -674,12 +690,12 @@ Cohesion: 0.15
 Nodes (12): component, $type, $value, dark, semantic, $schema, $type, $value (+4 more)
 
 ### Community 113 - "parsers.ts"
-Cohesion: 0.14
-Nodes (18): amount(), bcaStatement(), lineText(), months, PdfCell, pdfLines(), PdfPage, Mapping (+10 more)
+Cohesion: 0.10
+Nodes (23): amount(), bcaStatement(), lineText(), months, PdfCell, pdfLines(), PdfPage, recognize() (+15 more)
 
 ### Community 114 - "ref_postgres"
-Cohesion: 0.10
-Nodes (13): databaseName, PlanNode, sql, summarize(), admin, administration, db, destination (+5 more)
+Cohesion: 0.09
+Nodes (18): databaseName, PlanNode, sql, summarize(), admin, administration, db, destination (+10 more)
 
 ### Community 115 - "compilerOptions"
 Cohesion: 0.15
@@ -701,6 +717,14 @@ Nodes (11): extensions, formatReport(), fs, getFiles(), main(), parseArgs(), pat
 Cohesion: 0.20
 Nodes (12): $type, $value, bg, bg, padding, shadow, card, bg (+4 more)
 
+### Community 120 - "tracking/routes.ts"
+Cohesion: 0.28
+Nodes (23): RecurrenceFrequency, Actor, actorFor(), audit(), decimal(), dirtyUnusualBaselines(), fail(), Input (+15 more)
+
+### Community 121 - "reminder-scheduler.ts"
+Cohesion: 0.14
+Nodes (13): decryptPushAuth(), encryptPushAuth(), key(), PushScope, scopedContext(), AssistantPushJob, deliverAssistantPushJob(), deliverPushJob() (+5 more)
+
 ### Community 124 - "Core Visual Elements"
 Cohesion: 0.18
 Nodes (10): Color Palette, Colors, Core Visual Elements, Logo, Logo, Quick Checks, Typography, Typography (+2 more)
@@ -720,10 +744,6 @@ Nodes (3): WithElementRef, WithoutChild, WithoutChildren
 ### Community 128 - "Quick Reference"
 Cohesion: 0.18
 Nodes (11): 10. Charts & Data (LOW), 1. Accessibility (CRITICAL), 2. Touch & Interaction (CRITICAL), 3. Performance (HIGH), 4. Style Selection (HIGH), 5. Layout & Responsive (HIGH), 6. Typography & Color (MEDIUM), 7. Animation (MEDIUM) (+3 more)
-
-### Community 129 - "provider.ts"
-Cohesion: 0.22
-Nodes (7): AssistantProvider, assistantProviderAvailable(), disabledAssistantProvider, ProviderCategoryInput, ProviderCategoryResult, ProviderSuggestionInput, ProviderSuggestionResult
 
 ### Community 130 - "sync-brand-to-tokens.cjs"
 Cohesion: 0.29
@@ -761,9 +781,9 @@ Nodes (9): Common Structures, Duarte Sparkline Pattern, Matching Strategy to Con
 Cohesion: 0.10
 Nodes (31): CurrencyCatalog, CurrencyOption, FALLBACK_CURRENCIES, parseCatalog(), supportedCurrencies(), Actor, actorFor(), fail() (+23 more)
 
-### Community 140 - "isoDate"
-Cohesion: 0.23
-Nodes (27): budgetMethodRoutes, detail(), funding(), label(), nonnegative(), percentages(), debtRoutes, label() (+19 more)
+### Community 140 - "Money"
+Cohesion: 0.21
+Nodes (25): budgetMethodRoutes, detail(), funding(), label(), nonnegative(), percentages(), debtRoutes, label() (+17 more)
 
 ### Community 141 - "tax/+page.svelte"
 Cohesion: 0.09
@@ -773,21 +793,29 @@ Nodes (27): typeHelp(), typeLabel(), [], error, load(), loading, options, search
 Cohesion: 0.20
 Nodes (9): compilerOptions, module, moduleResolution, noEmit, skipLibCheck, strict, target, types (+1 more)
 
-### Community 144 - "cip/generate.py"
-Cohesion: 0.10
-Nodes (11): build_cip_prompt(), check_logo_required(), generate_cip_set(), generate_with_nano_banana(), load_env(), load_logo_image(), main(), generate_html() (+3 more)
+### Community 143 - "cip/generate.py"
+Cohesion: 0.19
+Nodes (7): build_cip_prompt(), check_logo_required(), generate_cip_set(), generate_with_nano_banana(), load_env(), load_logo_image(), main()
+
+### Community 144 - "business/worker.ts"
+Cohesion: 0.09
+Nodes (44): connection, queue, links, dispatchInvitationEmails(), sendInvitationEmail(), invoicePaymentLink(), dispatchInvoiceDeliveries(), loadInvoiceDelivery() (+36 more)
 
 ### Community 145 - "6. Functional Requirements"
 Cohesion: 0.20
 Nodes (10): 6.1 Accounts and Onboarding (AUTH), 6.2 Core Tracking (TRK), 6.3 Budgets and Goals (BUD), 6.4 Bills and Reminders (REM), 6.5 Business Finance (BIZ), 6.6 Dashboard, Reports, and Export (RPT), 6.7 AI Assistant (AI), 6.8 Gamification and Delight (FUN) (+2 more)
 
-### Community 146 - "business/money.ts"
-Cohesion: 0.19
-Nodes (18): businessAnalyticsRoutes, Money, period(), currencyScale(), CalculatedLine, calculateInvoice(), format(), InvoiceLineInput (+10 more)
+### Community 146 - "fromUnits"
+Cohesion: 0.27
+Nodes (17): fromUnits(), businessBurn(), comparisonGroupKey(), comparisonPeriods(), customerMetrics(), goalCoaching(), PaymentTerm, prioritizePayments() (+9 more)
 
 ### Community 147 - "generate-slide.py"
 Cohesion: 0.13
 Nodes (11): _e(), generate_chart_slide(), generate_cta_slide(), generate_deck(), generate_metrics_slide(), generate_problem_slide(), generate_solution_slide(), generate_testimonial_slide() (+3 more)
+
+### Community 148 - "formatDate"
+Cohesion: 0.20
+Nodes (12): Doc, escape(), Line, renderInvoicePdf(), money(), NoticeMessage, notificationMessage(), playwright (+4 more)
 
 ### Community 150 - "18. Protect your account and data"
 Cohesion: 0.22
@@ -806,8 +834,8 @@ Cohesion: 0.33
 Nodes (6): Available Domains, Available Stacks, How to Use This Skill, Output Formats, Prerequisites, Search Reference
 
 ### Community 154 - "CapyBudget"
-Cohesion: 0.25
-Nodes (8): CapyBudget, Core Tracking V2, Deployment guides, Layout, Local requirements, Personal finance V2 progress, Reset the local database, Security and privacy
+Cohesion: 0.14
+Nodes (14): AI assistant MVP, Business finance and invoices, CapyBudget, Core Tracking V2, Deployment guides, Email authentication, Layout, Local requirements (+6 more)
 
 ### Community 155 - "Shared controls and loading feedback"
 Cohesion: 0.18
@@ -830,20 +858,24 @@ Cohesion: 0.29
 Nodes (6): Animation Classes, Background Images, Base Structure, Chart.js Integration, CSS Variables Reference, HTML Slide Template
 
 ### Community 160 - "personal-finance/routes.ts"
-Cohesion: 0.26
-Nodes (14): budgetProgress(), decimal(), scaled(), actor(), budgetRows(), errorResponse(), fail(), period() (+6 more)
+Cohesion: 0.14
+Nodes (24): authorizeWorkspace(), BusinessRole, deny(), fail(), notificationRoutes, q(), queueUnusualReview(), Row (+16 more)
 
 ### Community 161 - "HTML Slide Template"
 Cohesion: 0.29
 Nodes (6): Animation Classes, Background Images, Base Structure, Chart.js Integration, CSS Variables Reference, HTML Slide Template
 
+### Community 162 - "api/package.json"
+Cohesion: 0.08
+Nodes (24): devDependencies, drizzle-kit, @types/archiver, @types/bun, @types/nodemailer, @types/web-push, typescript, exports (+16 more)
+
 ### Community 163 - "Slides"
 Cohesion: 0.33
 Nodes (5): References (Knowledge Base), Routing, Slides, Subcommands, When to Use
 
-### Community 164 - "cip/core.py"
-Cohesion: 0.11
-Nodes (7): BM25, detect_domain(), get_cip_brief(), _load_csv(), search(), search_all(), _search_csv()
+### Community 164 - "re"
+Cohesion: 0.12
+Nodes (6): BM25, detect_domain(), _load_csv(), search(), search_all(), _search_csv()
 
 ### Community 165 - "Security and privacy MVP — issue 13"
 Cohesion: 0.22
@@ -934,8 +966,8 @@ Cohesion: 0.50
 Nodes (4): Common Sticking Points, Pre-Delivery Checklist, Query Strategy, Tips for Better Results
 
 ### Community 189 - "team.ts"
-Cohesion: 0.29
-Nodes (17): beginInvitation(), clearInvitation(), connected(), flowCookie(), INVITATION_COOKIE, invitationCookie(), invitationDigest(), invitationFromHeaders() (+9 more)
+Cohesion: 0.24
+Nodes (19): beginInvitation(), clearInvitation(), connected(), flowCookie(), INVITATION_COOKIE, invitationCookie(), invitationDigest(), invitationFromHeaders() (+11 more)
 
 ### Community 190 - "14. Create and manage invoices"
 Cohesion: 0.50
@@ -989,10 +1021,6 @@ Nodes (3): ring, $type, $value
 Cohesion: 0.67
 Nodes (3): secondary-foreground, $type, $value
 
-### Community 203 - "v2/worker.ts"
-Cohesion: 0.17
-Nodes (19): getQueue(), scheduleRecurringWorkspace(), scheduleTrackingTask(), TRACKING_QUEUE, processRecurringWorkspace(), recognize(), require, validateImageSize() (+11 more)
-
 ### Community 205 - "invitation.ts"
 Cohesion: 0.28
 Nodes (6): App, Locals, handle(), invitationDestination(), InvitationFlow, 2. Understand the domain configuration
@@ -1029,77 +1057,93 @@ Nodes (3): 2.1 Goals, 2.2 Non-Goals (for the first releases), 2. Goals and Non-G
 Cohesion: 0.20
 Nodes (5): artifacts, metrics, pages, test, @axe-core/playwright
 
+### Community 217 - "assistantV2Constraints"
+Cohesion: 0.20
+Nodes (10): aiConversations, aiMessages, aiToolCalls, assistantSummaries, assistantSummarySchedules, assistantV2Constraints(), customerPaymentMetrics, forecastScenarios (+2 more)
+
+### Community 218 - "audit-display.ts"
+Cohesion: 0.21
+Nodes (13): actions, auditAction(), auditEntity(), AuditField, auditFields(), auditFilters(), auditValue(), entities (+5 more)
+
 ### Community 219 - "pathlib"
-Cohesion: 0.07
-Nodes (8): format_brief(), format_results(), main(), main(), _run(), test_flags_hardcoded_hex_sharing_line_with_token(), test_token_only_line_reports_no_violation(), TestDiagnosticsContracts
+Cohesion: 0.05
+Nodes (12): generate_html(), get_deliverable_info(), get_image_base64(), main(), format_brief(), format_results(), main(), main() (+4 more)
 
 ### Community 220 - "page-guides.ts"
 Cohesion: 0.33
 Nodes (3): Copy, PAGE_GUIDES, PageGuide
 
-### Community 223 - "fx.ts"
+### Community 221 - "fx.ts"
 Cohesion: 0.36
 Nodes (10): fail(), Pair, q(), Quote, quoteFor(), Rate, rateFor(), refreshLatestRates() (+2 more)
 
-### Community 224 - "privacy.ts"
-Cohesion: 0.16
-Nodes (12): PRIVACY_CONTEXT, PrivacyState, readPrivacyMode(), writePrivacyMode(), applyThemeChoice(), cancelThemeTransition(), normalizeThemeChoice(), readThemeChoice() (+4 more)
-
-### Community 226 - "Start"
+### Community 223 - "Assistant V2 — local verification (step 3)"
 Cohesion: 0.33
-Nodes (6): AI assistant MVP, Business finance and invoices, Email authentication, Notifications and reminders MVP, Reports and analytics MVP, Start
+Nodes (6): Assistant V2 — local verification (step 3), Deferred deployment checks, Physical microphone checklist — deferred by request, Repeat the checks, Results — 6 October 2026, Scope
 
-### Community 229 - "@playwright/test"
-Cohesion: 0.22
-Nodes (3): apiPort, webPort, @playwright/test
+### Community 225 - "AI Assistant V2 — issues #9 and #10 requirement audit"
+Cohesion: 0.33
+Nodes (6): AI Assistant V2 — issues #9 and #10 requirement audit, Changes made by this audit, Requirement matrix, Shared safety and release gates, Status definitions, Verification commands
+
+### Community 227 - "Capy Assistant V2"
+Cohesion: 0.20
+Nodes (10): Ask Capy from any app page, Capy Assistant V2, Detection evaluation and explanations, Enable Groq, Isolated verification, Privacy and limits, Suggestion feedback, Use Meta Muse instead (+2 more)
+
+### Community 228 - "db/index.ts"
+Cohesion: 0.07
+Nodes (22): database, redis, timer, web, admin, administration, db, destination (+14 more)
 
 ### Community 230 - "Pakasir invoice payments"
 Cohesion: 0.08
 Nodes (22): Business accounting basis — proposed review specification, Cutover procedure to review, Invariants to approve, Proposed accrual postings, Review checklist, Accounting and tax limits, Business finance V2 — implementation and acceptance, Database and startup (+14 more)
 
+### Community 232 - "business/money.ts"
+Cohesion: 0.19
+Nodes (19): currencyScale(), CalculatedLine, calculateInvoice(), format(), InvoiceLineInput, mulToCurrency(), quantity(), rounded() (+11 more)
+
+### Community 234 - "icon/generate.py"
+Cohesion: 0.10
+Nodes (13): apply_color(), apply_viewbox_size(), extract_svgs(), generate_batch(), generate_icon(), generate_sizes(), load_env(), main() (+5 more)
+
 ### Community 235 - "Included in this change"
 Cohesion: 0.22
 Nodes (8): Budget methods (`/budgets`), Debts (`/debts`), Included in this change, Migration and operations, Net worth (`/net-worth`), Personal finance V2 — implementation status and usage, Remaining work before issue #5 V2 can be called complete, Subscriptions (`/subscriptions`)
 
-### Community 243 - "deletion-receipt/+page.svelte"
-Cohesion: 0.29
-Nodes (5): busy, error, mounted, status, value
+### Community 239 - "@playwright/test"
+Cohesion: 0.22
+Nodes (3): apiPort, webPort, @playwright/test
 
-### Community 249 - "onboarding.ts"
+### Community 254 - "onboarding.ts"
 Cohesion: 0.43
 Nodes (5): ONBOARDING_STEPS, OnboardingState, OnboardingStep, parseOnboardingState(), load()
 
-### Community 250 - "test_relevance_evaluator.py"
+### Community 260 - "operations/backup.ts"
 Cohesion: 0.11
-Nodes (3): TestFixtureValidation, TestMetricMath, TestThresholdGate
+Nodes (38): encryptEmailMessage(), allKeys(), backupCommand(), command(), context(), createBackup(), database, databaseName (+30 more)
 
-### Community 260 - "client"
-Cohesion: 0.12
-Nodes (39): client, allKeys(), backupCommand(), command(), context(), createBackup(), database, databaseName (+31 more)
-
-### Community 264 - "csv"
-Cohesion: 0.07
-Nodes (5): read_rows(), TestStyleTaxonomy, read_rows(), TestTextLayoutDataContracts, TestTextLayoutRetrieval
+### Community 264 - "Assistant detection evaluation"
+Cohesion: 0.28
+Nodes (5): Assistant detection evaluation, Limits and unresolved cases, Release decision, Rules, Runtime
 
 ## Knowledge Gaps
-- **1667 isolated node(s):** `fs`, `path`, `fs`, `path`, `fs` (+1662 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2271 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **60 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **1721 isolated node(s):** `fs`, `path`, `fs`, `path`, `fs` (+1716 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2343 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **49 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `client` connect `client` to `personal-finance/routes.ts`, `reminder-scheduler.ts`, `business/routes.ts`, `payments.ts`, `business/worker.ts`, `v2/worker.ts`, `ux/routes.ts`, `workspaceToday`, `reports/routes.ts`, `q`, `app.ts`, `exports.ts`, `assistant/routes.ts`, `db/index.ts`, `tracking/routes.ts`, `team.ts`?**
-  _High betweenness centrality (0.019) - this node is a cross-community bridge._
-- **Why does `formatDate()` connect `reports/routes.ts` to `svelte`?**
+- **Why does `text()` connect `q` to `svelte`, `loading-scope.svelte`, `ref_node_crypto`, `team.ts`?**
+  _High betweenness centrality (0.015) - this node is a cross-community bridge._
+- **Why does `failed()` connect `assistant/v2/routes.ts` to `ref_postgres`, `CapyBudget`?**
   _High betweenness centrality (0.014) - this node is a cross-community bridge._
-- **Why does `text()` connect `workspaceToday` to `q`, `business/money.ts`, `svelte`, `team.ts`?**
-  _High betweenness centrality (0.013) - this node is a cross-community bridge._
+- **Why does `CapyBudget` connect `CapyBudget` to `README.md`?**
+  _High betweenness centrality (0.014) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `TailwindConfigGenerator` (e.g. with `TestGeneratedConfigIsValidJs` and `TestTailwindConfigGenerator`) actually correct?**
   _`TailwindConfigGenerator` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `fs`, `path`, `fs` to the rest of the system?**
-  _1667 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _1721 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `dependencies` be split into smaller, more focused modules?**
   _Cohesion score 0.08695652173913043 - nodes in this community are weakly interconnected._
 - **Should `i18n/auth.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.07130124777183601 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05609756097560976 - nodes in this community are weakly interconnected._
