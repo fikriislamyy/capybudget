@@ -55,7 +55,7 @@ export const PAGE_GUIDES: Record<string, PageGuide> = {
   note:['Transfers within included accounts are not new income or expense. Downloaded files contain financial amounts even if privacy mode hides them on screen.','Transfer antar akun yang disertakan bukan pemasukan atau pengeluaran baru. File unduhan berisi jumlah keuangan meskipun mode privasi menyembunyikannya di layar.']
  },
  '/assistant': {
-  summary:['Capy estimates the next 30, 60, or 90 days from the records you allow. Safe to spend leaves room for planned payments and protected money.','Capy memperkirakan 30, 60, atau 90 hari ke depan dari catatan yang Anda izinkan. Aman dibelanjakan menyisakan ruang untuk pembayaran terencana dan uang terlindungi.'],
+  summary:['Capy helps you review future cash, spending patterns and savings goals from the records you allow. Optional language tools answer questions and prepare transaction drafts for your review.','Capy membantu Anda meninjau kas mendatang, pola pengeluaran, dan tujuan tabungan dari catatan yang diizinkan. Fitur bahasa opsional menjawab pertanyaan dan menyiapkan draf transaksi untuk Anda tinjau.'],
   note:['Forecasts are estimates, not professional financial advice. Capy does not move bank money. Unavailable estimates need a review of missing records or excluded data, not an assumption of zero.','Prakiraan adalah estimasi, bukan nasihat keuangan profesional. Capy tidak memindahkan uang bank. Estimasi tidak tersedia membutuhkan tinjauan catatan yang hilang atau data yang dikecualikan, bukan dianggap nol.']
  },
  '/notifications': {

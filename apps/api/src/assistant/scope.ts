@@ -15,6 +15,7 @@ function failure(status:number,code:string,message:string){
 
 function mapScopeError(error:unknown){
   const issue=error as Error&{status?:number;code?:string};
+  if(issue instanceof RangeError)return failure(422,'INVALID_ASSISTANT_INPUT',issue.message);
   if(issue.status)return failure(issue.status,issue.code??'REQUEST_FAILED',issue.message);
   if(['23503','23505','23514','22P02'].includes(issue.code??''))return failure(409,'DATA_CONFLICT','The request conflicts with current finance data.');
   console.error('Assistant request failed',{sqlState:issue.code??'unknown'});

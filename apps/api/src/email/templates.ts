@@ -137,6 +137,7 @@ export function renderEmail(message: EmailMessage) {
           ...(message.paymentUrl?{action:{label:words.paymentAction,url:message.paymentUrl},fallbackLabel:words.fallback}:{}) }),
       };
     }
+    case 'assistant-summary':
     case 'assistant-alert': {
       const url = appLink('/assistant');
       return {

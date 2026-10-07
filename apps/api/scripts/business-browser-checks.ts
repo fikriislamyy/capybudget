@@ -7,7 +7,7 @@ const database=new URL(process.env.DATABASE_URL);database.pathname='/capybudget_
 const redis=new URL(process.env.BUSINESS_TEST_REDIS_URL??process.env.REDIS_URL??'redis://localhost:6379');if(!process.env.BUSINESS_TEST_REDIS_URL)redis.pathname='/15';process.env.REDIS_URL=redis.toString();
 process.env.DATABASE_POOL_MAX='2';process.env.BETTER_AUTH_SECRET=randomUUID()+randomUUID();process.env.NODE_ENV='test';process.env.WEB_ORIGIN='http://localhost:5189';process.env.PUBLIC_APP_URL=process.env.WEB_ORIGIN;process.env.BETTER_AUTH_URL=process.env.WEB_ORIGIN;process.env.API_INTERNAL_URL='http://localhost:3109';process.env.PUBLIC_API_URL=process.env.API_INTERNAL_URL;
 const {client}=await import('../src/db');const {app}=await import('../src/app');app.listen(3109);
-const web=Bun.spawn(['bun','run','dev','--port','5189','--strictPort'],{cwd:import.meta.dir+'/../../web',env:process.env,stdout:'ignore',stderr:'inherit'});
+const web=Bun.spawn(['bun','run','dev','--port','5189','--strictPort'],{cwd:import.meta.dir+'/../../web',env:{...process.env,CAPY_VITE_CACHE_DIR:`/tmp/capybudget-business-browser-vite-${process.pid}`},stdout:'ignore',stderr:'inherit'});
 let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined;
 try{
  const subjects=new Map<string,{id:string;cookies:{name:string;value:string;url:string}[]}>(),password='IsolatedBrowserFixture!42',hash=await hashPassword(password);

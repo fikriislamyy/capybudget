@@ -1,3 +1,4 @@
+import { deliverAssistantSummary } from '../assistant/v2/summary-email';
 import { sendInvitationEmail } from '../business/invitation-email';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { decryptEmailMessage } from './crypto';
@@ -26,6 +27,7 @@ export async function processEmailJob(job: Pick<Job<EncryptedEmailJob>, 'data' |
       if(delayed.length)return;
     }
     if(message.securityOwnerId){const [owner]=await client`select account_status,security_version from "user" where id=${message.securityOwnerId}`;if(!owner||owner.account_status!=='active'||Number(owner.security_version)!==message.securityGeneration)return;}
+    if(message.kind==='assistant-summary'){await deliverAssistantSummary(message,deliver);return;}
     if(message.kind==='business-invitation'){await sendInvitationEmail(message,deliver);return;}
     if(message.kind==='bill-reminder'){
       const deliveryId=message.deliveryId,notificationId=message.notificationId;
