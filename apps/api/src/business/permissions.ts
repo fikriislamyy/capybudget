@@ -28,9 +28,10 @@ export async function authorizeWorkspace(tx: TransactionSql, workspaceId: string
     if (/^\/business-accounting\/reviews(?:\/|$)/.test(path)) deny(403,'PERMISSION_DENIED','Accounting review evidence is restricted to owners and accountants.');
     const documentRead = request.method === 'POST' && (/^\/invoices\/[^/]+\/pdf$/.test(path)
       || /^\/reports\/runs(?:\/[^/]+\/exports)?$/.test(path));
+    const ownReports=/^\/reports\/(?:builder\/runs|definitions(?:\/[0-9a-f-]{36})?|schedules(?:\/[0-9a-f-]{36})?)$/.test(path);
     const ownNotification = /^\/(?:notifications|notification-preferences|notification-rules)(?:\/|$)/.test(path);
     const ownAssistant=/^\/assistant\/(?:settings|data|forecast\/refresh|v2\/(?:chat|voice|entry|scenarios|payment-plan|summary-schedule|findings\/[0-9a-f-]{36}))$/.test(path);
-    if (!read && !documentRead && !ownNotification && !ownAssistant) deny(403, 'PERMISSION_DENIED', 'This workspace is read-only for your role.');
+    if (!read && !documentRead && !ownReports && !ownNotification && !ownAssistant) deny(403, 'PERMISSION_DENIED', 'This workspace is read-only for your role.');
     return role;
   }
   // Staff may prepare their own drafts. No issued documents, wallet data or reports.

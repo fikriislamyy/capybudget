@@ -1,3 +1,4 @@
+import { sweepReportSchedules } from './schedules';
 import { UnrecoverableError, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { REPORTS_QUEUE, scheduleReportRecovery } from './queue';
@@ -7,6 +8,7 @@ const worker = new Worker(REPORTS_QUEUE, async (job) => {
   if (job.name === 'report-recovery-sweep') {
     await recoverReportJobs();
     await cleanupReportExports();
+    await sweepReportSchedules();
     return;
   }
   const workspaceId = String(job.data.workspaceId), userId = String(job.data.userId);

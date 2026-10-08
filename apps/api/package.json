@@ -36,7 +36,10 @@
     "test:assistant:v2": "bun --env-file=../../.env scripts/assistant-v2-checks.ts",
     "test:assistant:v2:browser": "bun --env-file=../../.env scripts/assistant-v2-browser-checks.ts",
     "evaluate:assistant:detection": "bun scripts/assistant-detection-evaluation.ts",
-    "test:assistant:v2:live": "bun --env-file=../../.env scripts/assistant-v2-live-checks.ts"
+    "test:assistant:v2:live": "bun --env-file=../../.env scripts/assistant-v2-live-checks.ts",
+    "test:reports:v2:setup": "bun --env-file=../../.env scripts/reports-v2-test-db.ts",
+    "test:reports:v2": "bun --env-file=../../.env scripts/reports-v2-checks.ts",
+    "test:reports:v2:browser": "bun --env-file=../../.env scripts/reports-v2-browser-checks.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "latest",

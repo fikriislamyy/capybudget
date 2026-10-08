@@ -137,6 +137,11 @@ export function renderEmail(message: EmailMessage) {
           ...(message.paymentUrl?{action:{label:words.paymentAction,url:message.paymentUrl},fallbackLabel:words.fallback}:{}) }),
       };
     }
+    case 'scheduled-report': {
+      const title=message.locale==='id'?'Laporan Anda sudah siap':'Your report is ready';
+      const text=message.locale==='id'?'Laporan terjadwal terlampir. Angka berdasarkan data yang tercatat di CapyBudget.':'Your scheduled report is attached. Figures are based on records in CapyBudget.';
+      return {subject:title+' · CapyBudget',text:message.title+'\n\n'+text,html:emailLayout({...base,title,category:words.personal,preheader:text,content:paragraph(message.title)+paragraph(text),action:{label:message.locale==='id'?'Lihat laporan':'Review reports',url:appLink('/reports')}})};
+    }
     case 'assistant-summary':
     case 'assistant-alert': {
       const url = appLink('/assistant');

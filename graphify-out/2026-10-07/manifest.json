@@ -726,9 +726,9 @@
     "semantic_hash": ""
   },
   "apps/api/src/reports/routes.ts": {
-    "mtime": 1791351100.0829186,
-    "seen": 1791351119.494518,
-    "ast_hash": "92145026243c1298dd92468fc06fe85e",
+    "mtime": 1791350206.9218106,
+    "seen": 1791350781.6336725,
+    "ast_hash": "c7603adc84f257554e194f94f08336ce",
     "semantic_hash": ""
   },
   "apps/api/src/reports/worker.ts": {
@@ -4218,9 +4218,9 @@
     "semantic_hash": ""
   },
   "apps/api/src/reports/schedules.ts": {
-    "mtime": 1791350994.5066607,
-    "seen": 1791351119.4945223,
-    "ast_hash": "656887751519b97625cdc0ba7d37a4cc",
+    "mtime": 1791350615.1230958,
+    "seen": 1791350781.6336737,
+    "ast_hash": "d879f5e44201124c6facaa48267f99d6",
     "semantic_hash": ""
   },
   "apps/api/src/reports/v2-data.ts": {
@@ -4236,15 +4236,15 @@
     "semantic_hash": ""
   },
   "apps/api/tests/reports/v2-integration.test.ts": {
-    "mtime": 1791351100.0836632,
-    "seen": 1791351119.4957204,
-    "ast_hash": "8daf7ec0a47e421210b8f8dd3ff83964",
+    "mtime": 1791350711.993225,
+    "seen": 1791350781.6345072,
+    "ast_hash": "db14e8c5a91637d0ec24bdf8d7236c07",
     "semantic_hash": ""
   },
   "apps/web/src/lib/components/reports/v2-panel.svelte": {
-    "mtime": 1791350844.4452946,
-    "seen": 1791350926.3944895,
-    "ast_hash": "a08f2ea4894eb70636bff8c8e9a3db5f",
+    "mtime": 1791350761.216604,
+    "seen": 1791350781.6355968,
+    "ast_hash": "92f8019e33e4597fb3738c82991eb885",
     "semantic_hash": ""
   },
   "docs/reports-v2.md": {

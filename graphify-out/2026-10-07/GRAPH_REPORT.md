@@ -1,12 +1,12 @@
 # Graph Report - capybudget  (2026-10-07)
 
 ## Corpus Check
-- 706 files · ~645,016 words
+- 706 files · ~645,009 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 73 file(s) not represented in the graph (top: .csv 53, .Identifier 7, (none) 6)
 
 ## Summary
-- 4684 nodes · 9563 edges · 264 communities (217 shown, 47 thin omitted)
+- 4684 nodes · 9562 edges · 271 communities (219 shown, 52 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 119 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
@@ -52,7 +52,7 @@
 - shadcn/ui Accessibility Patterns
 - TestTailwindConfigGenerator
 - business/routes.ts
-- pathlib
+- test_relevance_evaluator.py
 - payments.ts
 - Asset Approval Checklist
 - Logo AI Prompt Engineering
@@ -104,7 +104,7 @@
 - Copywriting Formulas
 - Copywriting Formulas
 - assistant/+page.svelte
-- design_system.py
+- generate_design_system
 - v2/worker.ts
 - CatalogRefreshTest
 - card/index.ts
@@ -155,7 +155,7 @@
 - isoDate
 - tax/+page.svelte
 - compilerOptions
-- cip/generate.py
+- generate_cip_set
 - business/worker.ts
 - 6. Functional Requirements
 - input/index.ts
@@ -176,7 +176,7 @@
 - HTML Slide Template
 - api/package.json
 - Slides
-- logo/core.py
+- BM25
 - Security and privacy MVP — issue 13
 - debts/+page.svelte
 - Pre-Delivery Checklist
@@ -199,7 +199,7 @@
 - xl
 - none
 - Tips for Better Results
-- test_native_desktop_stack_freshness.py
+- TestNativeDesktopStackFreshness
 - team.ts
 - 14. Create and manage invoices
 - 20. A simple daily and weekly routine
@@ -229,10 +229,13 @@
 - refresh.spec.ts
 - assistantV2Constraints
 - audit-display.ts
+- design_system.py
 - page-guides.ts
 - fx.ts
+- logo/search.py
 - Assistant V2 — local verification (step 3)
 - AI Assistant V2 — issues #9 and #10 requirement audit
+- test_validate_tokens.py
 - Capy Assistant V2
 - src/auth.ts
 - bullmq
@@ -248,13 +251,17 @@
 - 13. Keep business finances separate
 - rate-limit.ts
 - CapyBudget email design
+- BM25
 - nav-config.ts
 - deploy.sh
 - What is available
 - deletion-receipt/+page.svelte
-- test_text_layout_resilience.py
+- split_values
+- TestTextLayoutDataContracts
+- TestDiagnosticsContracts
 - onboarding.ts
 - operations/backup.ts
+- TestTextLayoutRetrieval
 - Assistant detection evaluation
 - dialog-footer.svelte
 
@@ -285,14 +292,14 @@
 ## Import Cycles
 - None detected.
 
-## Communities (264 total, 47 thin omitted)
+## Communities (271 total, 52 thin omitted)
 
 ### Community 0 - "dependencies"
 Cohesion: 0.09
 Nodes (23): dependencies, archiver, @aws-sdk/client-s3, @aws-sdk/lib-storage, better-auth, bullmq, csv-parse, decimal.js (+15 more)
 
 ### Community 1 - "i18n/auth.ts"
-Cohesion: 0.09
+Cohesion: 0.08
 Nodes (7): messages, Locale, messages, words, words, NoticeMessage, messages
 
 ### Community 2 - "schema.ts"
@@ -325,7 +332,7 @@ Nodes (18): color, fill, message, status, fill, status, PRIVACY_CONTEXT, Privacy
 
 ### Community 10 - "svelte"
 Cohesion: 0.07
-Nodes (4): dismissed, isId, slow, visible
+Nodes (11): L(), #snippet(), submit(), formatDate(), label(), money(), #snippet(), dismissed (+3 more)
 
 ### Community 11 - "scripts"
 Cohesion: 0.05
@@ -423,9 +430,9 @@ Nodes (28): Accordion, Alert, ARIA Labels, Checkbox and Radio, Color Contrast, C
 Cohesion: 0.28
 Nodes (23): addressReady(), audit(), bounded(), businessRoutes, cleanAddress(), detail(), ensurePdf(), fail() (+15 more)
 
-### Community 36 - "pathlib"
-Cohesion: 0.05
-Nodes (8): main(), _run(), test_flags_hardcoded_hex_sharing_line_with_token(), test_token_only_line_reports_no_violation(), TestDiagnosticsContracts, TestFixtureValidation, TestMetricMath, TestThresholdGate
+### Community 36 - "test_relevance_evaluator.py"
+Cohesion: 0.12
+Nodes (3): TestFixtureValidation, TestMetricMath, TestThresholdGate
 
 ### Community 37 - "payments.ts"
 Cohesion: 0.16
@@ -537,7 +544,7 @@ Nodes (19): $type, $value, background, foreground, muted-foreground, primary, pr
 
 ### Community 67 - "DesignSystemGenerator"
 Cohesion: 0.05
-Nodes (14): DesignSystemGenerator, _resolve_dial(), apply_decision_rules(), _object_without_duplicates(), parse_decision_rules(), _validate_action(), TestReasoningMatch, read_rows() (+6 more)
+Nodes (11): DesignSystemGenerator, _resolve_dial(), apply_decision_rules(), _object_without_duplicates(), parse_decision_rules(), _validate_action(), TestReasoningMatch, read_rows() (+3 more)
 
 ### Community 68 - "Core tracking V2"
 Cohesion: 0.20
@@ -576,8 +583,8 @@ Cohesion: 0.12
 Nodes (15): 22 Art Direction Styles, Banner Sizes & Art Direction Styles Reference, Complete Banner Sizes, CTA Rules, Design Principles, Pinterest Research Queries, Print, Print Specs (+7 more)
 
 ### Community 80 - "cip/core.py"
-Cohesion: 0.12
-Nodes (7): BM25, detect_domain(), get_cip_brief(), _load_csv(), search(), search_all(), _search_csv()
+Cohesion: 0.18
+Nodes (6): detect_domain(), get_cip_brief(), _load_csv(), search(), search_all(), _search_csv()
 
 ### Community 81 - "fontSize"
 Cohesion: 0.12
@@ -612,12 +619,12 @@ Cohesion: 0.13
 Nodes (14): AIDA (Attention-Interest-Desire-Action), Before-After-Bridge, Contrast Patterns, Copywriting Formulas, Core Formulas, Cost of Inaction, FAB (Features-Advantages-Benefits), Formula-to-Slide Mapping (+6 more)
 
 ### Community 89 - "assistant/+page.svelte"
-Cohesion: 0.09
-Nodes (23): L(), #snippet(), submit(), formatDate(), label(), money(), #snippet(), definition() (+15 more)
+Cohesion: 0.12
+Nodes (16): definition(), formatDate(), formatExactAmount(), parseLocalizedAmount(), for(), money(), #snippet(), if() (+8 more)
 
-### Community 90 - "design_system.py"
-Cohesion: 0.04
-Nodes (20): format_brief(), format_results(), main(), format_output(), generate_design_brief(), ansi_ljust(), _detect_page_type(), format_ascii_box() (+12 more)
+### Community 90 - "generate_design_system"
+Cohesion: 0.06
+Nodes (14): ansi_ljust(), _detect_page_type(), format_ascii_box(), format_markdown(), format_master_md(), format_page_override_md(), generate_design_system(), _generate_intelligent_overrides() (+6 more)
 
 ### Community 91 - "v2/worker.ts"
 Cohesion: 0.17
@@ -799,9 +806,9 @@ Nodes (29): typeHelp(), typeLabel(), [], error, load(), loading, options, search
 Cohesion: 0.20
 Nodes (9): compilerOptions, module, moduleResolution, noEmit, skipLibCheck, strict, target, types (+1 more)
 
-### Community 143 - "cip/generate.py"
-Cohesion: 0.19
-Nodes (7): build_cip_prompt(), check_logo_required(), generate_cip_set(), generate_with_nano_banana(), load_env(), load_logo_image(), main()
+### Community 143 - "generate_cip_set"
+Cohesion: 0.24
+Nodes (6): build_cip_prompt(), check_logo_required(), generate_cip_set(), generate_with_nano_banana(), load_logo_image(), main()
 
 ### Community 144 - "business/worker.ts"
 Cohesion: 0.12
@@ -879,7 +886,7 @@ Nodes (24): devDependencies, drizzle-kit, @types/archiver, @types/bun, @types/no
 Cohesion: 0.33
 Nodes (5): References (Knowledge Base), Routing, Slides, Subcommands, When to Use
 
-### Community 164 - "logo/core.py"
+### Community 164 - "BM25"
 Cohesion: 0.12
 Nodes (6): BM25, detect_domain(), _load_csv(), search(), search_all(), _search_csv()
 
@@ -1071,6 +1078,10 @@ Nodes (10): aiConversations, aiMessages, aiToolCalls, assistantSummaries, assist
 Cohesion: 0.09
 Nodes (35): links, Doc, escape(), Line, renderInvoicePdf(), appLink(), codeCard(), detailCard() (+27 more)
 
+### Community 219 - "design_system.py"
+Cohesion: 0.06
+Nodes (6): load_env(), format_brief(), format_results(), main(), main(), format_output()
+
 ### Community 220 - "page-guides.ts"
 Cohesion: 0.33
 Nodes (3): Copy, PAGE_GUIDES, PageGuide
@@ -1086,6 +1097,10 @@ Nodes (6): Assistant V2 — local verification (step 3), Deferred deployment che
 ### Community 225 - "AI Assistant V2 — issues #9 and #10 requirement audit"
 Cohesion: 0.33
 Nodes (6): AI Assistant V2 — issues #9 and #10 requirement audit, Changes made by this audit, Requirement matrix, Shared safety and release gates, Status definitions, Verification commands
+
+### Community 226 - "test_validate_tokens.py"
+Cohesion: 0.18
+Nodes (3): _run(), test_flags_hardcoded_hex_sharing_line_with_token(), test_token_only_line_reports_no_violation()
 
 ### Community 227 - "Capy Assistant V2"
 Cohesion: 0.20
@@ -1139,9 +1154,9 @@ Nodes (8): Build and save a report, Business accounting prerequisites, Email sch
 Cohesion: 0.29
 Nodes (5): busy, error, mounted, status, value
 
-### Community 251 - "test_text_layout_resilience.py"
-Cohesion: 0.18
-Nodes (3): read_rows(), TestTextLayoutDataContracts, TestTextLayoutRetrieval
+### Community 250 - "split_values"
+Cohesion: 0.47
+Nodes (3): split_values(), style_identities(), TestStyleIdentityContract
 
 ### Community 254 - "onboarding.ts"
 Cohesion: 0.43
@@ -1158,7 +1173,7 @@ Nodes (5): Assistant detection evaluation, Limits and unresolved cases, Release 
 ## Knowledge Gaps
 - **1746 isolated node(s):** `fs`, `path`, `fs`, `path`, `fs` (+1741 more)
   These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2369 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **47 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **52 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -1176,4 +1191,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `dependencies` be split into smaller, more focused modules?**
   _Cohesion score 0.08695652173913043 - nodes in this community are weakly interconnected._
 - **Should `i18n/auth.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.09116809116809117 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07956989247311828 - nodes in this community are weakly interconnected._
