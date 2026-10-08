@@ -101,6 +101,9 @@ export const workspaceTables = [
   "assistant_feedback",
 
   "cashflow_category_mappings",
+  "saved_report_definitions",
+  "report_schedules",
+  "report_deliveries",
   "report_runs",
   "report_rows",
   "report_exports",

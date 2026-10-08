@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ReportsV2Panel from "$lib/components/reports/v2-panel.svelte";
   import { formatDate, formatDateTime } from '$lib/dates';
   import { trackLoading } from '$lib/loading.svelte';
   import LoadingScope from '$lib/components/shared/loading-scope.svelte';
@@ -21,6 +22,7 @@
     id: string;
     currency: string;
     kind: "personal" | "business";
+    timezone?: string;
   };
   type CashflowMapping = {
     categoryId: string;
@@ -548,6 +550,7 @@
           }} items={[...(presets).flatMap((item) => [{value: item[0], label: String(label(item[1], item[2]))}])]} /></label
       >
       <div class="exports">
+        <a class="inline-flex min-h-11 items-center rounded-full border-2 border-border px-4 focus-visible:outline-2" href="#custom-reports">{label("Custom reports", "Laporan khusus")}</a>
         <Button variant="outline" onclick={() => void exportFile("csv")}
           >CSV</Button
         ><Button variant="outline" onclick={() => void exportFile("xlsx")}
@@ -558,6 +561,7 @@
       </div>
     </div>{/snippet}
 </PageHeader>
+
 {#if loading && !data}<LoadingSkeleton
     rows={5}
     label={label("Loading report…", "Memuat laporan…")}
@@ -967,6 +971,10 @@
       "Pilih workspace untuk melihat laporan.",
     )}
   </p>{/if}
+
+<section id="custom-reports" class="mt-8" aria-label={label("Custom reports and email schedules","Laporan khusus dan jadwal email")}>
+{#if workspace.ready && workspace.selectedId}<ReportsV2Panel workspaceId={workspace.selectedId} kind={workspace.items.find(item=>item.id===workspace.selectedId)?.kind??"personal"} currency={workspace.items.find(item=>item.id===workspace.selectedId)?.currency??"IDR"} timezone={workspace.items.find(item=>item.id===workspace.selectedId)?.timezone??"Asia/Jakarta"} />{/if}
+</section>
 
 <style>
   .period {

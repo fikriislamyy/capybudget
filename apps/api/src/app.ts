@@ -1,3 +1,4 @@
+import { reportScheduleRoutes } from './reports/schedules';
 import { businessAccountingRoutes } from './business/accounting-routes';
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
@@ -73,6 +74,7 @@ export const app = new Elysia()
   .use(assistantRoutes)
   .use(assistantV2Routes)
   .use(reportsRoutes)
+  .use(reportScheduleRoutes)
   .all('/api/auth/*', async ({ request, server }) => {
     const ip = clientIpForRequest(request, server?.requestIP(request)?.address);
     const limited = await guardAuthRequest(request, ip);

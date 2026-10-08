@@ -1,0 +1,30 @@
+import {randomUUID} from 'node:crypto';
+import {chromium} from 'playwright';
+import {hashPassword} from 'better-auth/crypto';
+if(!process.env.DATABASE_URL)throw new Error('DATABASE_URL required');const database=new URL(process.env.DATABASE_URL);if(!['localhost','127.0.0.1'].includes(database.hostname))throw new Error('Local isolated database required');database.pathname='/capybudget_reports_v2_test';process.env.DATABASE_URL=database.toString();const redis=new URL(process.env.REDIS_URL??'redis://localhost:6379');if(!['localhost','127.0.0.1'].includes(redis.hostname)||redis.pathname==='/13')throw new Error('Dedicated local Redis database required');redis.pathname='/13';process.env.REDIS_URL=redis.toString();
+process.env.DATABASE_POOL_MAX='2';process.env.BETTER_AUTH_SECRET=randomUUID()+randomUUID();process.env.NODE_ENV='test';process.env.WEB_ORIGIN='http://localhost:5321';process.env.PUBLIC_APP_URL=process.env.WEB_ORIGIN;process.env.BETTER_AUTH_URL=process.env.WEB_ORIGIN;process.env.API_INTERNAL_URL='http://localhost:3321';process.env.PUBLIC_API_URL=process.env.WEB_ORIGIN;
+const {client}=await import('../src/db'),{app}=await import('../src/app');app.listen(3321);
+const web=Bun.spawn(['bun','run','dev','--port','5321','--strictPort'],{cwd:import.meta.dir+'/../../web',env:{...process.env,CAPY_VITE_CACHE_DIR:`/tmp/capybudget-reports-browser-vite-${process.pid}`},stdout:'ignore',stderr:'inherit'});
+let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined,ws='',actor='',working=false;
+const {processQueuedReportRun}=await import('../src/reports/routes');
+const timer=setInterval(()=>{if(working||!ws)return;working=true;void (async()=>{const runs=await client`select id from report_runs where workspace_id=${ws} and requested_by=${actor} and status='queued'`;for(const run of runs)await processQueuedReportRun(run.id,ws,actor);})().catch(()=>{}).finally(()=>{working=false;});},500);
+try{
+ actor='reports-browser-'+randomUUID();const email=actor+'@example.test',password='IsolatedReportsBrowser!42';await client`insert into "user"(id,name,email,email_verified) values(${actor},'Browser fixture',${email},true)`;await client`insert into account(id,account_id,provider_id,user_id,password) values(${randomUUID()},${actor},'credential',${actor},${await hashPassword(password)})`;
+ const login=await app.handle(new Request(process.env.WEB_ORIGIN+'/api/auth/sign-in/email',{method:'POST',headers:{origin:process.env.WEB_ORIGIN,'content-type':'application/json'},body:JSON.stringify({email,password})}));if(!login.ok)throw new Error('Fixture login failed');const cookies=login.headers.getSetCookie().map(v=>{const [part]=v.split(';'),i=part!.indexOf('=');return {name:part!.slice(0,i),value:part!.slice(i+1),url:process.env.WEB_ORIGIN!};}),cookie=cookies.map(c=>c.name+'='+c.value).join('; ');
+ const request=(path:string,method='GET',body?:unknown)=>app.handle(new Request(process.env.WEB_ORIGIN+path,{method,headers:{cookie,origin:process.env.WEB_ORIGIN,'content-type':'application/json','idempotency-key':randomUUID()},...(body===undefined?{}:{body:JSON.stringify(body)})}));
+ const created=await request('/api/workspaces','POST',{kind:'business',name:'Reports browser fixture',currency:'IDR',timezone:'Asia/Jakarta'});ws=(await created.json()).workspace.id;await client`insert into onboarding_state(user_id,usage_type,current_step,first_workspace_id,completed_at) values(${actor},'both','done',${ws},now())`;
+ for(let attempt=0;attempt<90;attempt++){try{if((await fetch(process.env.WEB_ORIGIN)).ok)break;}catch{}await Bun.sleep(500);}
+ browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+ for(const {width,locale,dark} of [{width:1440,locale:'en',dark:false},{width:390,locale:'en',dark:false},{width:1440,locale:'id',dark:true},{width:360,locale:'id',dark:true}]){
+  await request('/api/preferences','PUT',{locale,theme:dark?'dark':'light'});
+  const context=await browser.newContext({viewport:{width,height:1000},serviceWorkers:'block',reducedMotion:'reduce'});await context.addCookies(cookies);await context.addInitScript(({actor,ws,locale,dark})=>{localStorage.setItem('capybudget-workspace:'+actor,ws);localStorage.setItem('capybudget-locale',locale);localStorage.setItem('capybudget-theme',dark?'dark':'light');},{actor,ws,locale,dark});const page=await context.newPage(),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  const response=await page.goto(process.env.WEB_ORIGIN+'/reports',{waitUntil:'domcontentloaded',timeout:45000});if(!response?.ok())throw new Error('Reports page failed');
+  const panel=page.locator('#custom-reports');await panel.getByText(locale==='id'?'Laporan sesuai kebutuhan Anda':'Your report, your view',{exact:true}).waitFor({timeout:45000});
+  await panel.getByRole('button',{name:locale==='id'?'Pratinjau laporan':'Preview report',exact:true}).click();await panel.getByText(locale==='id'?'Snapshot laporan siap. Unduhan berlaku 7 hari.':'Report snapshot ready. Downloads expire after 7 days.',{exact:true}).waitFor({timeout:30000});
+  await panel.getByLabel(locale==='id'?'Nama laporan':'Report name',{exact:true}).fill(`Browser ${width} ${locale}`);await panel.getByRole('button',{name:locale==='id'?'Simpan laporan':'Save report',exact:true}).click();await panel.getByText(locale==='id'?'Laporan disimpan.':'Report saved.',{exact:true}).waitFor();
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);if(overflow)throw new Error('Reports page overflows at '+width);if(errors.length)throw new Error(errors.join('; '));
+  await panel.screenshot({path:`/tmp/capybudget-reports-${width}-${locale}.png`});console.log(`Reports preview, saved definition and ${dark?'Night Pond':'light'} layout passed at ${width}px (${locale}).`);await context.close();
+ }
+}finally{clearInterval(timer);await browser?.close();web.kill();await app.stop();if(ws)await client`update workspaces set archived_at=now() where id=${ws}`;await client.end();}
+
+process.exit(0);

@@ -1,6 +1,7 @@
 export type EmailLocale = 'en' | 'id';
 
 export type EmailMessage = {securityOwnerId?:string;securityGeneration?:number} & (
+  | {kind:'scheduled-report';to:string;workspaceId:string;requestedBy:string;deliveryId:string;title:string;locale:EmailLocale;expiresAt:number}
   | {
       kind: 'business-invitation';
       to: string; url: string; businessName: string; role: string; workspaceId: string;
